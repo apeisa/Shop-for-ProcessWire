@@ -1,0 +1,39 @@
+#all_orders {
+	width: 70%;
+	float: left;
+}
+
+#active_carts {
+	float: right;
+	width: 28%;
+}
+
+table.items {
+	padding-bottom: 30px;
+	margin-bottom: 30px;
+	border-bottom: 1px solid #ccc;
+}
+
+#paid_container {
+	width: 45%;
+	margin-right: 4%;
+	float: left;
+	border-right: 1px dotted #ccc;
+	margin-bottom: 30px;
+}
+
+#processed_container {
+	width: 49%;
+	float: left;
+}
+
+#status_container {
+	clear: both;
+	padding-top: 30px;
+	margin-top: 30px;
+	border-top: 1px solid #ccc;
+}
+
+#content {
+	overflow: auto; /* Clearfix */
+}

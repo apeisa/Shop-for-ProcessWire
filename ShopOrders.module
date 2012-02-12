@@ -1,0 +1,484 @@
+<?php
+
+class ShopOrders extends Process {
+
+	public static function getModuleInfo() {
+		return array(
+			'title' => 'Orders Management',
+			'summary' => 'Manage Shop orders',
+			'version' => 100,
+			'permanent' => false,
+			'singular' => true,
+			'permission' => 'shop_orders',
+			'installs' => array("ShopCheckout")
+		);
+	}
+
+	public function init() {
+		parent::init();
+	}
+
+	public function ___execute() {
+		$this->setFuel('processHeadline', 'Orders Management');
+
+		$out  = "<div id='all_orders'>";
+		$out .= "<h2>". $this->_("All orders:") ."</h2>";
+
+		$table = $this->modules->get("MarkupAdminDataTable");
+		$table->setEncodeEntities(false);
+		$table->headerRow(array($this->_('Customer'), $this->_('Status'), $this->_('Total Sum'), $this->_('Time')));
+
+		$orders = $this->pages->find('template=sc-order,limit=20,sort=-created');
+		
+		if($orders->count() == 0) {
+			$out .= $this->_("No orders yet");
+		} else {
+
+			foreach($orders as $order) {
+	
+				 // output in table rows with edit link and delete checkbox?
+				 $table->row(array(
+					 $order->sc_fullname => "edit/?id={$order->id}",
+					 $order->sc_status->title,
+					 $order->sc_price . ' &euro;',
+					 date($this->config->dateFormat,$order->created)
+				));
+			}
+			$out .= $table->render();
+		}
+		$out .= "</div>";
+
+		$out .= "<div id='active_carts'>";
+		$out .= "<h2>". $this->_("Active carts:") ."</h2>";
+
+		$table = $this->modules->get("MarkupAdminDataTable");
+		$table->setEncodeEntities(false);
+		$table->headerRow(array('View', 'Total Sum', 'Time'));
+
+		$result = $this->db->query("SELECT * FROM ShopCart WHERE total_sum > 0 ORDER BY last_modified DESC LIMIT 10");
+
+		while($row = $result->fetch_assoc()) {
+
+			 // output in table rows with edit link and delete checkbox?
+			 $table->row(array(
+				 $this->_("View"),
+				 $row['total_sum'] . ' &euro;',
+				 $row['last_modified']
+			));
+		}
+
+		$out .= $table->render();
+		$out .= "</div>";
+
+
+
+		// Is there clean way to add button to right side?
+		return $out;
+	}
+
+	public function ___executeEdit() {
+
+		$this->fuel->breadcrumbs->add(new Breadcrumb('../', 'Orders'));
+		$id = (int) $this->input->get->id;
+		$order = $this->pages->get($id);
+		
+		if ($id < 1 || $order->template != 'sc-order') return false;
+		
+		$out = '';
+
+		// Save processed date
+		if ($this->input->post->processed) {
+			$order->sc_processed = time();
+			$order->save();
+		}
+
+		// Save paid date
+		if ($this->input->post->paid) {
+			$order->sc_paid = time();
+			$order->save();
+		}
+		
+		// Change status
+		if ($this->input->post->status) {
+			$status = $this->pages->get("template=admin, name={$this->input->post->status}");
+			$order->sc_status = $status;
+			$order->save();
+			$this->session->redirect("./?id=$id");
+		}
+
+
+		$out .= "<div class='sc-header'><h2><span>{$order->sc_status->title}</span> #{$id}</h2></div>";
+
+		$out .= "<div class='customer'><p><b>" . $order->sc_fullname . "</b><br />". $order->sc_shippingaddress . "</p></div>";
+
+
+		$table = $this->modules->get("MarkupAdminDataTable");
+		$table->setEncodeEntities(false);
+		$table->setClass('items');
+		$table->headerRow(array($this->_('Product'),
+								$this->_('Qty'),
+								$this->_('Price'),
+								$this->_('Total')));
+
+		$items = $order->children();
+		$order_total = 0;
+
+		foreach($items as $item) {
+
+			// get product price from actual product page
+			$total_price = $item->sc_qty * $item->sc_price;
+			
+			$table->row(array(
+			   $item->title,
+			   $item->sc_qty,
+			   $item->sc_price,
+			   $total_price
+			));
+			
+			$order_total = $order_total + $total_price;
+		}
+
+		$table->row(array(
+			"<b>" . $this->_("Total:") . "</b>",
+			"&nbsp;",
+			"&nbsp;",
+			$order_total
+		));
+
+
+
+		$out .= $table->render();
+
+		if($order->sc_paid == 0) {
+			$out .= "<div id='paid_container' class='block'><h3>". $this->_("Customer hasn't paid this order yet") ."</h3>";
+			$out .= "<p class='description'>". $this->_("Payment method: ") . "<b>" . "maksutapa" . "</b><br/>" . $this->_("Mark this paid after you have received the payment.") . "</p>";
+
+			$form = $this->modules->get('InputfieldForm');
+			$form->attr('action', './?id=' . $id);
+			$form->attr('method', 'post');
+
+			$field = $this->modules->get('InputfieldSubmit');
+			$field->attr('id+name', 'paid');
+			$field->attr('value', $this->_('Mark as Paid'));
+			$form->append($field);
+
+			$out .= $form->render();
+			$out .= "</div>";
+		} else {
+			$out .= "<div id='paid_container' class='block'><h3>". $this->_("This order has been paid") ."</h3>";
+			$out .= "<p class='description'>". $this->_("Payment method: ") . "<b>" . "maksutapa" . "</b><br/>" . $this->_("Date of payment received: ") . date($this->config->dateFormat,$order->sc_paid) . "</p>";
+			$out .= "</div>";
+		}
+
+		if ($order->sc_processed == 0) {
+			$out .= "<div id='processed_container' class='block'><h3>". $this->_("This order hasn't been processed yet.") ."</h3>";
+			$out .= "<p class='description'>" .  $this->_("Mark this processed after you have delivered the goods.") . "</p>";
+			$form = $this->modules->get('InputfieldForm');
+			$form->attr('action', './?id=' . $id);
+			$form->attr('method', 'post');
+
+			$field = $this->modules->get('InputfieldSubmit');
+			$field->attr('id+name', 'processed');
+			$field->attr('value', $this->_('Mark as Processed'));
+			$form->append($field);
+
+			$out .= $form->render();
+			$out .= "</div>";
+
+		} else {
+			$out .= "<div id='processed_container' class='block'><h3>". $this->_("This order has been processed.") ."</h3>";
+			$out .= "<p class='description'>" .  $this->_("This order has been marked processed on: ") . date($this->config->dateFormat,$order->sc_processed) . "</p>";
+			$out .= "</div>";
+		}
+		
+		$out .= "<div id='status_container' class='block'>";
+		$form = $this->modules->get('InputfieldForm');
+		$form->attr('action', './?id=' . $id);
+		$form->attr('method', 'post');
+		
+		$container = new InputfieldWrapper();
+		$field = $this->modules->get('InputfieldSelect');
+		$statuses = $this->pages->get('template=admin,name=statuses')->children();
+		$field->attr('id+name', 'status');
+		$field->set('label', $this->_("Change order status?"));
+		$field->set('collapsed', 1);
+		foreach($statuses as $status) {
+			if ($status == $order->sc_status) $selected = array('selected' => 'selected');
+			else $selected = array();
+			$field->addOption($status->name, $status->title, $selected);
+		}
+		$container->add($field); 
+		
+
+		$field = $this->modules->get('InputfieldSubmit');
+		$field->attr('id+name', 'changestatus');
+		$field->attr('value', $this->_('Change status'));
+		$container->add($field);
+		$form->append($container);
+
+		$out .= $form->render();
+		$out .= "</div>";
+
+		return $out;
+	}
+	
+	public function install() {
+		$admin = $this->templates->get("admin");
+		
+		$list = $this->modules->get('ProcessList');
+		
+		$shop = new Page();
+		$shop->template = $admin;
+		$shop->parent = $this->pages->get($this->config->adminRootPageID);
+		$shop->title = 'Shop';
+		$shop->name = 'shop';
+		$shop->process = $list;
+		$shop->save();
+		
+		
+		$om = $this->modules->get('ShopOrders');
+		
+		
+		if ($shop->id) {
+			$orders = new Page();
+			$orders->template = $this->templates->get("admin");
+			$orders->parent = $shop;
+			$orders->title = 'Orders';
+			$orders->name = 'orders';
+			$orders->process = $om;
+			$orders->save();
+		}
+		
+		//shop/settings/
+		$settings = new Page();
+		$settings->template = $admin;
+		$settings->parent = $shop;
+		$settings->title = 'Shop settings';
+		$settings->name = 'settings';
+		$settings->save();
+		
+		//shop/settings/statuses/
+		$statuses = new Page();
+		$statuses->template = $admin;
+		$statuses->parent = $settings;
+		$statuses->title = 'Order statuses';
+		$statuses->name = 'statuses';
+		$statuses->save();
+		
+		//shop/settings/statuses/completed/
+		$p = new Page();
+		$p->template = $admin;
+		$p->parent = $statuses;
+		$p->title = 'Completed';
+		$p->name = 'completed';
+		$p->save();
+		
+		//shop/settings/statuses/cancelled/
+		$p = new Page();
+		$p->template = $admin;
+		$p->parent = $statuses;
+		$p->title = 'Cancelled';
+		$p->name = 'cancelled';
+		$p->save();
+		
+		
+		
+		$oifg = new Fieldgroup();
+		$oifg->name = 'sc-order-item';
+		$oifg->add($this->fields->get('title'));
+		$oifg->save();
+
+		$oi = new Template();
+		$oi->name = 'sc-order-item';
+		$oi->fieldgroup = $oifg;
+		$oi->pageLabelField = 'title';
+		$oi->noChildren = 1;
+		$oi = $oi->save();
+		
+		$fg = new Fieldgroup();
+		$fg->name = 'sc-order';
+		$fg->add($this->fields->get('title'));
+		$fg->save();
+
+		$t = new Template();
+		$t->name = 'sc-order';
+		$t->fieldgroup = $fg;
+		$t->pageLabelField = 'title';
+		$t->parentTemplates = array($admin->id);
+		$t->childTemplates = array($oi->id);
+		$t = $t->save();
+		
+		if (!$this->fields->get('sc_price')) {
+			$f = new Field();
+			$f->type = $this->modules->get("FieldtypeFloat");
+			$f->name = 'sc_price';
+			$f->precision = 2;
+			$f->label = 'Price of the product';
+			$f->save();
+		}
+		$fg->add($f);
+		$fg->save();
+		$oifg->add($f);
+		$oifg->save();
+		
+		if (!$this->fields->get('sc_qty')) {
+			$f = new Field();
+			$f->type = $this->modules->get("FieldtypeInteger");
+			$f->name = 'sc_qty';
+			$f->label = 'Quantity';
+			$f->save();
+		}
+		$oifg->add($f);
+		$oifg->save();
+		
+		if (!$this->fields->get('sc_product')) {
+			$f = new Field();
+			$f->type = $this->modules->get("FieldtypePage");
+			$f->name = 'sc_product';
+			$f->label = 'Product';
+			$f->inputfield = 'InputfieldPageListSelect';
+			$f->save();
+		}
+		$oifg->add($f);
+		$oifg->save();
+		
+		if (!$this->fields->get('sc_customer')) {
+			$f = new Field();
+			$f->type = $this->modules->get("FieldtypePage");
+			$f->name = 'sc_customer';
+			$f->label = 'Customer';
+			$f->inputfield = 'InputfieldPageListSelect';
+			$f->derefAsPage = FieldtypePage::derefAsPageOrFalse;
+			$f->parent_id = $this->config->usersPageID;
+			$f->template_id = $this->config->userTemplateID;
+			$f->save();
+		}
+		$fg->add($f);
+		$fg->save();
+		
+		if (!$this->fields->get('sc_status')) {
+			$f = new Field();
+			$f->type = $this->modules->get("FieldtypePage");
+			$f->name = 'sc_status';
+			$f->label = 'Order Status';
+			$f->inputfield = 'InputfieldSelect';
+			$f->derefAsPage = FieldtypePage::derefAsPageOrFalse;
+			$f->parent_id = $statuses->id;
+			$f->save();
+		}
+		$fg->add($f);
+		$fg->save();
+		
+		if (!$this->fields->get('sc_fullname')) {
+			$f = new Field();
+			$f->type = $this->modules->get("FieldtypeText");
+			$f->name = 'sc_fullname';
+			$f->label = 'Full name';
+			$f->save();
+		}
+		$fg->add($f);
+		$fg->save();
+		
+		if (!$this->fields->get('sc_shippingaddress')) {
+			$f = new Field();
+			$f->type = $this->modules->get("FieldtypeTextarea");
+			$f->name = 'sc_shippingaddress';
+			$f->label = 'Shipping address';
+			$f->save();
+		}
+		$fg->add($f);
+		$fg->save();
+		
+		if (!$this->fields->get('sc_country')) {
+			$f = new Field();
+			$f->type = $this->modules->get("FieldtypeText");
+			$f->name = 'sc_country';
+			$f->label = 'Country';
+			$f->save();
+		}
+		$fg->add($f);
+		$fg->save();
+		
+		if (!$this->fields->get('sc_paid')) {
+			$f = new Field();
+			$f->type = $this->modules->get("FieldtypeDatetime");
+			$f->name = 'sc_paid';
+			$f->label = 'Paid';
+			$f->dateOutputFormat = $this->config->dateFormat;
+			$f->dateInputFormat = $this->config->dateFormat;
+			$f->save();
+		}
+		$fg->add($f);
+		$fg->save();
+		
+		if (!$this->fields->get('sc_processed')) {
+			$f = new Field();
+			$f->type = $this->modules->get("FieldtypeDatetime");
+			$f->name = 'sc_processed';
+			$f->label = 'Processed';
+			$f->dateOutputFormat = $this->config->dateFormat;
+			$f->dateInputFormat = $this->config->dateFormat;
+			$f->save();
+		}
+		$fg->add($f);
+		$fg->save();
+		
+		
+		
+		// Only allowed parent template for sc-order-item is sc-order
+		$oi->parentTemplates = array($t->id);
+		$oi->save();
+
+
+		$fg = new Fieldgroup();
+		$fg->name = 'sc-checkout';
+		$fg->add($this->fields->get('title'));
+		$fg->save();
+
+		$t = new Template();
+		$t->name = 'sc-checkout';
+		$t->fieldgroup = $fg;
+		$t->pageLabelField = 'title';
+		$t = $t->save();
+
+		$p = new Page();
+		$p->template = $t;
+		$p->parent = $this->pages->get(1);
+		$p->title = 'Checkout';
+		$p->name = 'checkout';
+		$p->addStatus(Page::statusHidden);
+		$p->save();
+	}
+	
+	public function uninstall() {
+		$p = $this->pages->get('template=sc-checkout, include=all');
+		if ($p->id) $p->delete();
+		
+		$p = $this->pages->get('template=admin, name=shop, include=all');
+		if ($p->id) $this->pages->delete($p, true); // Recursive delete
+
+		if ($this->templates->get('sc-checkout')) {
+			$this->templates->delete($this->templates->get('sc-checkout'));
+			$this->fieldgroups->delete($this->fieldgroups->get('sc-checkout'));
+		}
+		
+		if ($this->templates->get('sc-order')) {
+			$this->templates->delete($this->templates->get('sc-order'));
+			$this->fieldgroups->delete($this->fieldgroups->get('sc-order'));	
+		}
+		
+		if ($this->templates->get('sc-order-item')) {
+			$this->templates->delete($this->templates->get('sc-order-item'));
+			$this->fieldgroups->delete($this->fieldgroups->get('sc-order-item'));
+		}
+		
+		// Remove all other sc_fields but sc_price
+		$scFields = $this->fields->find("name^=sc_");
+		foreach($scFields as $f) {
+			if(!$f->name == "sc_price")
+				$this->fields->delete($f);
+		}
+	}
+
+
+}
