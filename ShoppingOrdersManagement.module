@@ -1,6 +1,6 @@
 <?php
 
-class ShopOrders extends Process {
+class ShoppingOrdersManagement extends Process {
 
 	public static function getModuleInfo() {
 		return array(
@@ -10,7 +10,8 @@ class ShopOrders extends Process {
 			'permanent' => false,
 			'singular' => true,
 			'permission' => 'shop_orders',
-			'installs' => array("ShopCheckout")
+			'requires' => array("ShoppingCart"),
+			'installs' => array("ShoppingCheckout")
 		);
 	}
 
@@ -55,7 +56,7 @@ class ShopOrders extends Process {
 		$table->setEncodeEntities(false);
 		$table->headerRow(array('View', 'Total Sum', 'Time'));
 
-		$result = $this->db->query("SELECT * FROM ShopCart WHERE total_sum > 0 ORDER BY last_modified DESC LIMIT 10");
+		$result = $this->db->query("SELECT * FROM ShoppingCart WHERE total_sum > 0 ORDER BY last_modified DESC LIMIT 10");
 
 		while($row = $result->fetch_assoc()) {
 
@@ -151,7 +152,7 @@ class ShopOrders extends Process {
 
 		if($order->sc_paid == 0) {
 			$out .= "<div id='paid_container' class='block'><h3>". $this->_("Customer hasn't paid this order yet") ."</h3>";
-			$out .= "<p class='description'>". $this->_("Payment method: ") . "<b>" . "maksutapa" . "</b><br/>" . $this->_("Mark this paid after you have received the payment.") . "</p>";
+			$out .= "<p class='description'>". $this->_("Payment method: ") . "<b>" . $order->sc_paymentmethod . "</b><br/>" . $this->_("Mark this paid after you have received the payment.") . "</p>";
 
 			$form = $this->modules->get('InputfieldForm');
 			$form->attr('action', './?id=' . $id);
@@ -166,7 +167,7 @@ class ShopOrders extends Process {
 			$out .= "</div>";
 		} else {
 			$out .= "<div id='paid_container' class='block'><h3>". $this->_("This order has been paid") ."</h3>";
-			$out .= "<p class='description'>". $this->_("Payment method: ") . "<b>" . "maksutapa" . "</b><br/>" . $this->_("Date of payment received: ") . date($this->config->dateFormat,$order->sc_paid) . "</p>";
+			$out .= "<p class='description'>". $this->_("Payment method: ") . "<b>" . $order->sc_paymentmethod . "</b><br/>" . $this->_("Date of payment received: ") . date($this->config->dateFormat,$order->sc_paid) . "</p>";
 			$out .= "</div>";
 		}
 
@@ -236,8 +237,6 @@ class ShopOrders extends Process {
 		$shop->save();
 		
 		
-		$om = $this->modules->get('ShopOrders');
-		
 		
 		if ($shop->id) {
 			$orders = new Page();
@@ -245,7 +244,7 @@ class ShopOrders extends Process {
 			$orders->parent = $shop;
 			$orders->title = 'Orders';
 			$orders->name = 'orders';
-			$orders->process = $om;
+			$orders->process = $this;
 			$orders->save();
 		}
 		
@@ -271,6 +270,14 @@ class ShopOrders extends Process {
 		$p->parent = $statuses;
 		$p->title = 'Completed';
 		$p->name = 'completed';
+		$p->save();
+		
+		//shop/settings/statuses/in-progress/
+		$p = new Page();
+		$p->template = $admin;
+		$p->parent = $statuses;
+		$p->title = 'In Progress';
+		$p->name = 'in-progress';
 		$p->save();
 		
 		//shop/settings/statuses/cancelled/
@@ -308,7 +315,8 @@ class ShopOrders extends Process {
 		$t->childTemplates = array($oi->id);
 		$t = $t->save();
 		
-		if (!$this->fields->get('sc_price')) {
+		$f = $this->fields->get('sc_price');
+		if (!$f) {
 			$f = new Field();
 			$f->type = $this->modules->get("FieldtypeFloat");
 			$f->name = 'sc_price';
@@ -316,6 +324,7 @@ class ShopOrders extends Process {
 			$f->label = 'Price of the product';
 			$f->save();
 		}
+		
 		$fg->add($f);
 		$fg->save();
 		$oifg->add($f);
@@ -423,6 +432,16 @@ class ShopOrders extends Process {
 		$fg->add($f);
 		$fg->save();
 		
+		if (!$this->fields->get('sc_paymentmethod')) {
+			$f = new Field();
+			$f->type = $this->modules->get("FieldtypeText");
+			$f->name = 'sc_paymentmethod';
+			$f->label = 'Payment Method used';
+			$f->save();
+		}
+		$fg->add($f);
+		$fg->save();
+		
 		
 		
 		// Only allowed parent template for sc-order-item is sc-order
@@ -438,6 +457,7 @@ class ShopOrders extends Process {
 		$t = new Template();
 		$t->name = 'sc-checkout';
 		$t->fieldgroup = $fg;
+		$t->urlSegments = 1;
 		$t->pageLabelField = 'title';
 		$t = $t->save();
 
@@ -473,10 +493,9 @@ class ShopOrders extends Process {
 		}
 		
 		// Remove all other sc_fields but sc_price
-		$scFields = $this->fields->find("name^=sc_");
+		$scFields = $this->fields->find("name^=sc_,name!=sc_price");
 		foreach($scFields as $f) {
-			if(!$f->name == "sc_price")
-				$this->fields->delete($f);
+			$this->fields->delete($f);
 		}
 	}
 

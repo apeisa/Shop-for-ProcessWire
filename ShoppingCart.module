@@ -1,0 +1,281 @@
+
+<?php
+
+class ShoppingCart extends WireData implements Module
+{
+	public static function getModuleInfo()
+	{
+		return array(
+			'title' => 'Shopping Cart',
+			'version' => 001,
+			'summary' => 'Simple shopping cart for PW',
+			'singular' => false,
+			'autoload' => true
+		);
+	}
+	
+	public function init()
+	{
+		if ($this->input->post->sc_product_id) {
+			$product_id = (int) $this->input->post->sc_product_id;
+			$qty = (int) $this->input->post->sc_qty;
+			$this->addProductToCart($this->pages->get($product_id), $qty);
+			$this->session->redirect("./");
+		}
+		
+		if ($this->input->post->sc_update) {
+			$this->updateCart($this->input->post->items);
+			$this->session->redirect("./");
+		}
+		
+		if ($this->input->get->sc_remove) {
+			$product_id = (int) $this->input->get->remove;
+			$this->addProductToCart($this->pages->get($product_id), 0);
+			$this->session->redirect("./");
+		}
+		
+		if ($this->input->post->sc_checkout) {
+			$this->updateCart($this->input->post->items);
+			$checkout = $this->pages->get("template=sc-checkout, include=hidden");
+			if ($checkout->url)
+				$this->session->redirect($checkout->url);
+			else
+				$this->session->redirect("./");
+		}
+	}
+	
+	/**
+	 * Returns the default markup for "Add to cart form"
+	 * 
+	 * @param Page $product Actual product page (usually just $page on your template)
+	 * @param string $postUrl Url where we post (you can think that as a redirect, since post are handled by this autoload module)
+	 * @return string|false Markup for "Add to cart form" or false if there ain't numeric and over 0 price for the product
+	 *
+	 */
+	public function renderAddToCart(Page $product, $postUrl = "./")
+	{
+		if (!(is_numeric($product->sc_price)) || $product->sc_price <= 0)
+			return false;
+		
+		$out = "<form method='post' action='$postUrl'>";
+		$out .= "<input type='hidden' value='{$product->id}' name='sc_product_id' />";
+		$out .= "<input type='number' name='sc_qty' value='1'/>";
+		$out .= "<input type='submit' value='" . $this->_("Add to cart") . "' />";
+		$out .= "</form>";
+		
+		return $out;
+	}
+	
+	
+	/**
+	 * Returns true|false depending if product was added succesfully to the cart
+	 * 
+	 * @param Page $product Actual product page
+	 * @param int $qty How many items added, use 0 if you want to remove the item
+	 * @return true|false 
+	 *
+	 */
+	public function addProductToCart(Page $product, $qty = 1)
+	{
+		$items = $this->getCurrentCart();
+		$qty   = (int) $qty;
+		
+		if ($qty < 0)
+			return false;
+		
+		// There is not a single product available
+		if (count($items) == 0) {
+			if ($qty > 0)
+				$items[] = $this->_newItem($product->id, $qty);
+		} else {
+			$product_found = false;
+			foreach ($items as $key => $item) {
+				if ($item->product_id === $product->id) {
+					$item->qty = $item->qty + $qty;
+					if ($qty === 0) {
+						unset($items[$key]);
+						$items = array_values($items);
+					}
+					$product_found = true;
+					break;
+				}
+			}
+			if (!$product_found) {
+				if ($qty > 0)
+					$items[] = $this->_newItem($product->id, $qty);
+			}
+		}
+		
+		$total_sum = $this->getTotalSumFromItems($items);
+		$items     = json_encode($items);
+		
+		// Update cart to db or insert new row if there isn't
+		$update = $this->db->query("INSERT INTO {$this->className} SET items = '$items', total_sum = $total_sum, session_id = '" . session_id() . "' ON DUPLICATE KEY UPDATE items = '$items', total_sum = $total_sum");
+		
+		return true;
+	}
+	
+	/**
+	 * Returns markup for actual cart, where is possibilities to edit and remove products and qty
+	 * 
+	 * @return string markup for cart
+	 *
+	 */
+	public function renderCart()
+	{
+		
+		$items = $this->getCurrentCart();
+		
+		if (count($items) == 0) {
+			return $this->_("No items in cart");
+		}
+		
+		$total_sum = $this->getTotalSumFromItems($items);
+		
+		$out = "<h2>" . $this->_("Items in your cart:") . "</h2>";
+		$out .= "<form method='post' action='./'><table>";
+		$out .= "<tr><th>" . $this->_('Product') . "</th><th>" . $this->_('Quantity') . "</th><th>" . $this->_('Price') . "</th><th>" . $this->_('Remove?') . "</th></tr>";
+		
+		foreach ($items as $item) {			
+			// get product price from actual product page
+			$product     = $this->pages->get($item->product_id);
+			$total_price = $item->qty * $product->sc_price;
+			
+			$out .= "<tr>";
+			$out .= "<td>{$product->title}</td>";
+			$out .= "<td><input data-price='" . $product->sc_price . "' name='items[{$product->id}]' type='number' size='2' value='" . (int) $item->qty . "'/></td>";
+			$out .= "<td>{$total_price}</td>";
+			$out .= "<td><a class='remove' href='./?sc_remove=" . $product->id . "'>" . $this->_("Remove") . "</a></td>";
+			$out .= "</tr>";
+		}
+		
+		$out .= "<tr class='final'><td>" . $this->_("Total:") . "</td><td>&nbsp;</td><td id='total_sum'>$total_sum</td><td></td></tr>";
+		$out .= "</table>";
+		$out .= "<input type='submit' name='sc_update' value=' " . $this->_("Update Cart") . "' />";
+		if ($this->modules->isInstalled('ShoppingCheckout'))
+			$out .= "<input type='submit' name='sc_checkout' value=' " . $this->_("Continue to checkout") . "' />";
+		$out .= "</form>";
+		
+		return $out;
+	}
+	
+	/**
+	 * Returns true
+	 *
+	 * Removes product from cart
+	 * 
+	 * @param Page $product Actual product that you want to remove
+	 * @return true
+	 *
+	 */
+	public function removeProductFromCart($product)
+	{
+		$this->addProductToCart($product, 0);
+		return true;
+	}
+	
+	/**
+	 * Returns cart items as JSON
+	 *
+	 * Updates the current cart
+	 * 
+	 * @param array $products Simple array that has product_id:s as keys and qty as value array(123 => 4, 124 => 2)
+	 * @return string with current items as JSON string
+	 *
+	 */
+	public function updateCart(array $products)
+	{
+		$items = array();
+		
+		foreach ($products as $product_id => $qty) {
+			if ($qty > 0)
+				$items[] = $this->_newItem((int) $product_id, (int) $qty);
+		}
+		
+		$total_sum = $this->getTotalSumFromItems($items);
+		$items     = json_encode($items);
+		
+		$update = $this->db->query("UPDATE {$this->className} SET items = '$items', total_sum = $total_sum WHERE session_id = '" . session_id() . "'");
+		
+		return $items;
+		
+	}
+	
+	public function getTotalSumFromItems($items)
+	{
+		$total_sum = 0;
+		if (count($items) < 1)
+			return $total_sum;
+		
+		foreach ($items as $item) {
+			$product     = $this->pages->get($item->product_id);
+			$total_price = $item->qty * $product->sc_price;
+			$total_sum   = $total_sum + $total_price;
+		}
+		return $total_sum;
+	}
+	
+	public function getCurrentCart()
+	{
+		$sid    = session_id();
+		$result = $this->db->query("SELECT items FROM {$this->className} WHERE session_id = '$sid' ORDER BY last_modified LIMIT 1");
+		if ($result->num_rows === 0) {
+			return array();
+		} else {
+			list($items) = $result->fetch_array();
+			return json_decode($items);
+		}
+	}
+	
+	public function getTotalSumFromCart()
+	{
+		$items = $this->getCurrentCart();
+		return $this->getTotalSumFromItems($items);
+	}
+	
+	public function getNumberOfItems()
+	{
+		return count($this->getCurrentCart());
+	}
+	
+	private function _newItem($product_id, $qty)
+	{
+		$new_item             = new stdClass;
+		$new_item->product_id = $product_id;
+		$new_item->qty        = $qty;
+		
+		return $new_item;
+	}
+	
+	public function install()
+	{
+		if (!$this->fields->get('sc_price')) {
+			$f            = new Field();
+			$f->type      = $this->modules->get("FieldtypeFloat");
+			$f->name      = 'sc_price';
+			$f->precision = 2;
+			$f->label     = 'Price of the product';
+			$f->save();
+		}
+		
+		$sql = <<< _END
+
+		CREATE TABLE {$this->className} (
+			session_id VARCHAR(255) NULL,
+			last_modified TIMESTAMP NOT NULL default CURRENT_TIMESTAMP on update CURRENT_TIMESTAMP,
+			items TEXT NULL,
+			total_sum FLOAT(10,2) NULL,
+			user_id INT NULL,
+			PRIMARY KEY (`session_id`) )
+		  ENGINE = MyISAM DEFAULT CHARSET=utf8;
+
+_END;
+		
+		$this->db->query($sql);
+	}
+	
+	public function uninstall()
+	{
+		$this->db->query("DROP TABLE {$this->className}");
+	}
+}

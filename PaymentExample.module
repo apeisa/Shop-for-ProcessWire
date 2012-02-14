@@ -1,0 +1,55 @@
+<?php
+
+require_once(dirname(__FILE__) . '/PaymentInterface.php');
+
+class PaymentExample extends WireData implements Module, PaymentInterface {
+	
+    public static function getModuleInfo()
+	{
+		return array(
+			'title' => 'Example Payment Method',
+			'version' => 001,
+			'summary' => 'Demonstrates how to create payment methods for PW Shop',
+			'singular' => false,
+			'autoload' => false
+		);
+	}
+    public function init() { }
+	
+	/*
+	 *
+	 * returns nothing, should always do redirect to payment processor or if local
+	 * then to ../completed/
+	 *
+	 * @param Page $order keeps the page object for the order
+	 *
+	 */
+    public function processPayment(Page $order) {
+		if ($this->input->get->ok) {
+			if ($this->input->get->ok == 'paid') {
+				$order->setOutputFormatting(false);
+				$order->sc_paid = time();
+			}
+			$order->removeStatus(Page::statusUnpublished);
+			$order->save();
+			
+			$this->session->redirect('../completed/');
+		}
+		
+		$out = "Your order:<br><br>";
+		
+		// Products
+		foreach($order->children as $p) {
+			$out .= $p->title . ", ";
+			$out .= $p->sc_price . " * ";
+			$out .= $p->sc_qty . "€<br>";
+		}
+		
+		$out .= $order->sc_price . "<br>";
+		
+		$out .= "<ul><li><a href='./?ok=invoice'>Send me an invoice</a>";
+		$out .= "<li><a href='./?ok=paid'>I have already paid this</a>";
+		
+		return $out;
+    }
+}

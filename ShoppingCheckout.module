@@ -1,0 +1,150 @@
+<?php
+
+class ShoppingCheckout extends WireData implements Module
+{
+	public static function getModuleInfo()
+	{
+		return array(
+			'title' => 'Shopping Checkout',
+			'version' => 001,
+			'summary' => 'Handles checkout process for PW Shop',
+			'singular' => false,
+			'autoload' => true,
+			'requires' => array(
+				"ShoppingCart",
+				"ShoppingOrdersManagement"
+			)
+		);
+	}
+	
+	protected $steps = array(
+		'step1' => "step1",
+		'step2' => "payment",
+		'step3' => "completed"
+		); 
+	
+	public function init()
+	{
+		
+	}
+	
+	
+	public function ready()
+	{
+		if (!($this->page->template->name == "sc-checkout"))
+			return false;
+		
+		if ($this->input->post->step2) {
+			$this->completeOrder();			
+			$this->session->redirect("./" . $this->steps['step2'] ."/");
+		}
+		
+		if ($this->input->post->complete) {
+			$this->session->redirect("./" . $this->steps['step3'] ."/");
+		}
+	}
+	
+	public function renderCheckout()
+	{
+		if(!$this->input->urlSegment1) {
+			$out = $this->renderContactForm();
+		}
+		else if ($this->input->urlSegment1 == $this->steps['step2']) {
+			$out = $this->renderPayment();
+		}
+		else if ($this->input->urlSegment1 == $this->steps['step3']) {
+			$out = "Kiitos!";
+		}
+		
+		return $out;
+	}
+	
+	public function renderContactForm() {
+		$out = "<h2>" . $this->_("Fill in your details and complete the order.") . "</h2>";
+		$out .= "<form action='./{$this->paymentUrl}' method='post'>";
+		$out .= "<label for='fullname'>" . $this->_("Fullname:") . "</label><br/>";
+		$out .= "<input name='fullname' /><br/><br/>";
+		$out .= "<label for='email'>" . $this->_("E-Mail:") . "</label><br/>";
+		$out .= "<input name='email' /><br/><br/>";
+		$out .= "<label for='address'>" . $this->_("Address:") . "</label><br/>";
+		$out .= "<textarea name='address'></textarea><br/><br/>";
+		$paymentModules = $this->modules->find('className^=Payment');
+		if ($paymentModules->count() > 0) {
+			$out .= "<select name='paymentmethod'>";
+			foreach($paymentModules as $module) {
+				$info = $module->getModuleInfo();
+				$out .= "<option value='". get_class($module) ."'>".$info['title']."</option>";
+			}
+			$out .= "</select>";
+			$out .= "<input type='submit' name='step2' value='" . $this->_("Complete the order") . "' />";
+			
+		} else {
+			$out .= "<p>No payment methods installed, you should have at least one</p>";
+		}
+		
+		
+		$out .= "</form>";
+		
+		return $out;
+	}
+	
+	public function renderPayment() {
+		// Get latest unpublished order from current user
+		$order = $this->pages->get("template=sc-order, sc_customer={$this->user}, status=unpublished, limit=1, sort=-created");
+		$paymentmethod = $this->modules->get("{$order->sc_paymentmethod}");
+		return $paymentmethod->processPayment($order);
+	}
+	
+	public function completeOrder()
+	{
+		// TODO: Sanitize and validate!!!
+		$fullname = $this->input->post->fullname;
+		$address = $this->input->post->address;
+		$email = $this->input->post->email;
+		$paymentmethod = $this->input->post->paymentmethod;
+		$ordername = $this->sanitizer->pageName($fullname) . time();
+		
+		$items = $this->modules->ShoppingCart->getCurrentCart();
+		
+		$order = new Page();
+		$order->template = $this->templates->get('sc-order');
+		$order->parent = $this->pages->get("template=admin,name=orders");
+		$order->title = $this->_("Order: ") . $fullname;
+		$order->name = $ordername;
+		$order->sc_fullname = $fullname;
+		$order->sc_shippingaddress = $address;
+		$order->sc_price = $this->modules->ShoppingCart->getTotalSumFromItems($items);
+		$order->sc_customer = $this->user;
+		$order->sc_paymentmethod = $paymentmethod;
+		$order->addStatus(Page::statusUnpublished);
+		
+		// Default status will be first one there is on /shop/settings/statuses/
+		$admin = $this->pages->get($this->config->adminRootPageID);
+		$order->sc_status = $this->pages->get("/{$admin->name}/shop/settings/statuses/")->children()->first();
+		
+		$order->save();
+		
+		foreach ($items as $item) {
+			$product = $this->pages->get($item->product_id);
+			
+			$p = new Page();
+			$p->template = $this->templates->get('sc-order-item');
+			$p->parent = $order;
+			$p->title = $product->title;
+			$p->sc_price = $product->sc_price;
+			$p->sc_qty = $item->qty;
+			$p->sc_product = $product;
+			$p->save();
+		}
+		
+		$this->db->query("DELETE FROM ShoppingCart WHERE session_id = '" . session_id() . "'");
+	}
+	
+	public function install()
+	{
+	}
+	
+	public function uninstall()
+	{
+	}
+}
