@@ -15,7 +15,7 @@ Few tips
 --------
 
 If you want to build tiny shopping cart to show current status you probably need these to functions:
-echo $modules->get("ShopCart")->getTotalSumFromCart();
-echo $modules->get("ShopCart")->getNumberOfItems();
+echo $modules->get("ShoppingCart")->getTotalSumFromCart();
+echo $modules->get("ShoppingCart")->getNumberOfItems();
 
 PS: getNumberOfItems returns different items. So if you have 10*ProductA and 4*ProductB it will return 2
