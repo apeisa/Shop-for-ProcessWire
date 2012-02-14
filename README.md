@@ -3,12 +3,13 @@ Quick quide
 
 1.  Install Shopping Cart
 2.  Install Orders Management
-3.  Add field sc_price to your product template (any template will do!)
-4.  Add echo $modules->get("ShopCart")->renderAddToCart($page); to your product template (or write your own form markup)
-5.  Create template file called "sc-checkout.php"
-6.  Add this line to your newly created checkout tempalte: echo $modules->get("ShopCheckout")->renderCheckout();
-7.  Add prices to your products and it should work
-8.  Remember this is a work in progress and if it works, it ain't complete
+3.  Install PaymentExample
+4.  Add field sc_price to your product template (any template will do!)
+5.  Add echo $modules->get("ShoppingCart")->renderAddToCart($page); to your product template (or write your own form markup)
+6.  Create template file called "sc-checkout.php"
+7.  Add this line to your newly created checkout tempalte: echo $modules->get("ShoppingCheckout")->renderCheckout();
+8.  Add prices to your products and it should work
+9.  Remember this is a work in progress and if it works, it ain't complete
 
 Few tips
 --------
