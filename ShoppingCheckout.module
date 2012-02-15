@@ -1,6 +1,6 @@
 <?php
 
-class ShoppingCheckout extends WireData implements Module
+class ShoppingCheckout extends WireData implements Module, ConfigurableModule
 {
 	public static function getModuleInfo()
 	{
@@ -9,7 +9,7 @@ class ShoppingCheckout extends WireData implements Module
 			'version' => 001,
 			'summary' => 'Handles checkout process for PW Shop',
 			'singular' => false,
-			'autoload' => true,
+			'autoload' => false,
 			'requires' => array(
 				"ShoppingCart",
 				"ShoppingOrdersManagement"
@@ -17,11 +17,26 @@ class ShoppingCheckout extends WireData implements Module
 		);
 	}
 	
-	protected $steps = array(
-		'step1' => "step1",
-		'step2' => "payment",
-		'step3' => "completed"
-		); 
+	static public function getDefaultData() {
+	   return array(
+		   'paymentUrlSegment' => "payment",
+		   'completedUrlSegment' => "completed"
+		   );
+	}
+
+	/**
+	 * Populate the default config data
+	 *
+	 * ProcessWire will automatically overwrite it with anything the user has specifically configured.
+	 * This is done in construct() rather than init() because ProcessWire populates config data after
+	 * construct(), but before init().
+	 *
+	 */
+	public function __construct() {
+	   foreach(self::getDefaultData() as $key => $value) {
+		   $this->$key = $value;
+	   }
+	}
 	
 	public function init()
 	{
@@ -31,17 +46,7 @@ class ShoppingCheckout extends WireData implements Module
 	
 	public function ready()
 	{
-		if (!($this->page->template->name == "sc-checkout"))
-			return false;
 		
-		if ($this->input->post->step2) {
-			$this->completeOrder();			
-			$this->session->redirect("./" . $this->steps['step2'] ."/");
-		}
-		
-		if ($this->input->post->complete) {
-			$this->session->redirect("./" . $this->steps['step3'] ."/");
-		}
 	}
 	
 	public function renderCheckout()
@@ -49,19 +54,24 @@ class ShoppingCheckout extends WireData implements Module
 		if(!$this->input->urlSegment1) {
 			$out = $this->renderContactForm();
 		}
-		else if ($this->input->urlSegment1 == $this->steps['step2']) {
+		else if ($this->input->urlSegment1 == $this->paymentUrlSegment) {
 			$out = $this->renderPayment();
 		}
-		else if ($this->input->urlSegment1 == $this->steps['step3']) {
-			$out = "Kiitos!";
+		else if ($this->input->urlSegment1 == $this->completedUrlSegment) {
+			$out = $this->renderCompleted();
 		}
 		
 		return $out;
 	}
 	
 	public function renderContactForm() {
+		
+		if ($this->input->post->goToPayment) {
+			$this->completeOrder(); // This creates new order-page, but doesn't publish it yet. 
+			$this->session->redirect("./{$this->paymentUrlSegment}/");
+		}
 		$out = "<h2>" . $this->_("Fill in your details and complete the order.") . "</h2>";
-		$out .= "<form action='./{$this->paymentUrl}' method='post'>";
+		$out .= "<form action='./' method='post'>";
 		$out .= "<label for='fullname'>" . $this->_("Fullname:") . "</label><br/>";
 		$out .= "<input name='fullname' /><br/><br/>";
 		$out .= "<label for='email'>" . $this->_("E-Mail:") . "</label><br/>";
@@ -76,12 +86,11 @@ class ShoppingCheckout extends WireData implements Module
 				$out .= "<option value='". get_class($module) ."'>".$info['title']."</option>";
 			}
 			$out .= "</select>";
-			$out .= "<input type='submit' name='step2' value='" . $this->_("Complete the order") . "' />";
+			$out .= "<input type='submit' name='goToPayment' value='" . $this->_("Complete the order") . "' />";
 			
 		} else {
 			$out .= "<p>No payment methods installed, you should have at least one</p>";
 		}
-		
 		
 		$out .= "</form>";
 		
@@ -93,6 +102,27 @@ class ShoppingCheckout extends WireData implements Module
 		$order = $this->pages->get("template=sc-order, sc_customer={$this->user}, status=unpublished, limit=1, sort=-created");
 		$paymentmethod = $this->modules->get("{$order->sc_paymentmethod}");
 		return $paymentmethod->processPayment($order);
+	}
+	
+	public function renderCompleted() {
+		if (!$this->session->orderId) return "Payment failed, session lost";
+		
+		$orderId = $this->session->orderId;
+		$order = $this->pages->get($orderId);
+		
+		if(!$order->id)
+			throw new WireExpection("Payment error, order couldn't be found");
+		
+		if ($order->is(Page::statusUnpublished)) {
+			$out = "Payment failed!";
+			$out .= "<a href='../{$this->paymentUrlSegment}/'>Try again?</a>";
+			return $out;
+		} else {
+			return "Thank you: $order->title !";
+		}
+		
+		
+		
 	}
 	
 	public function completeOrder()
@@ -124,6 +154,8 @@ class ShoppingCheckout extends WireData implements Module
 		
 		$order->save();
 		
+		$this->session->set('orderId', $order->id);
+		
 		foreach ($items as $item) {
 			$product = $this->pages->get($item->product_id);
 			
@@ -138,6 +170,38 @@ class ShoppingCheckout extends WireData implements Module
 		}
 		
 		$this->db->query("DELETE FROM ShoppingCart WHERE session_id = '" . session_id() . "'");
+	}
+	
+	static public function getModuleConfigInputfields(array $data) {
+		// this is a container for fields, basically like a fieldset
+		$fields = new InputfieldWrapper();
+
+		// since this is a static function, we can't use $this->modules, so get them from the global wire() function
+		$modules = wire('modules');
+
+		// Populate $data with the default config, because if they've never configured this module before,
+		// the $data provided to this function will be empty. Or, if you add new config items in a new version,
+		// $data won't have it until they configure it. Best bet is to merge defaults with custom, where
+		// custom overwrites the defaults (array_merge).
+		$data = array_merge(self::getDefaultData(), $data);
+
+		
+		$field = $modules->get("InputfieldText");
+		$field->name = "paymentUrlSegment";
+		$field->label = "UrlSegment for payment step";
+		$field->description = "This is only shown in the url.";
+		$field->value = $data['paymentUrlSegment']; 
+		$fields->add($field);
+
+		
+		$field = $modules->get("InputfieldText");
+		$field->name = "completedUrlSegment";
+		$field->label = "UrlSegment for completed step";
+		$field->description = "This is only shown in the url.";
+		$field->value = $data['completedUrlSegment']; 
+		$fields->add($field);
+
+		return $fields;
 	}
 	
 	public function install()

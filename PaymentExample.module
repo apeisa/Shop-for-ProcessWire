@@ -1,8 +1,8 @@
 <?php
 
-require_once(dirname(__FILE__) . '/PaymentInterface.php');
+require_once(dirname(__FILE__) . '/PaymentAbstract.php');
 
-class PaymentExample extends WireData implements Module, PaymentInterface {
+class PaymentExample extends PaymentAbstract {
 	
     public static function getModuleInfo()
 	{
@@ -14,7 +14,9 @@ class PaymentExample extends WireData implements Module, PaymentInterface {
 			'autoload' => false
 		);
 	}
-    public function init() { }
+    public function init() {
+		
+	}
 	
 	/*
 	 *
@@ -26,14 +28,25 @@ class PaymentExample extends WireData implements Module, PaymentInterface {
 	 */
     public function processPayment(Page $order) {
 		if ($this->input->get->ok) {
+			
+			
+			
+			if ($this->input->get->ok == 'fail') {
+				// We don't remove statusUnpublished and it means that payment failed
+				$this->session->redirect($this->completedUrl);
+			}
+			
 			if ($this->input->get->ok == 'paid') {
 				$order->setOutputFormatting(false);
 				$order->sc_paid = time();
 			}
+			
 			$order->removeStatus(Page::statusUnpublished);
 			$order->save();
 			
-			$this->session->redirect('../completed/');
+			$this->session->redirect($this->completedUrl);
+			
+			
 		}
 		
 		$out = "Your order:<br><br>";
@@ -47,8 +60,10 @@ class PaymentExample extends WireData implements Module, PaymentInterface {
 		
 		$out .= $order->sc_price . "<br>";
 		
+		
 		$out .= "<ul><li><a href='./?ok=invoice'>Send me an invoice</a>";
 		$out .= "<li><a href='./?ok=paid'>I have already paid this</a>";
+		$out .= "<li><a href='./?ok=fail'>I want to fail this payment</a>";
 		
 		return $out;
     }
