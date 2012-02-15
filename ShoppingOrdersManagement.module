@@ -442,7 +442,19 @@ class ShoppingOrdersManagement extends Process {
 		$fg->add($f);
 		$fg->save();
 		
+		if (!$this->fields->get('sc_session')) {
+			$f = new Field();
+			$f->type = $this->modules->get("FieldtypeText");
+			$f->name = 'sc_session';
+			$f->label = 'Session ID';
+			$f->save();
+		}
+		$fg->add($f);
+		$fg->save();
 		
+		$f = $this->fields->get('email');
+		$fg->add($f);
+		$fg->save();
 		
 		// Only allowed parent template for sc-order-item is sc-order
 		$oi->parentTemplates = array($t->id);

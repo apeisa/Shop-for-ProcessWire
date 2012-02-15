@@ -49,17 +49,34 @@ class PaymentExample extends PaymentAbstract {
 			
 		}
 		
-		$out = "Your order:<br><br>";
+		//  No need to really do anything like this on payment module, this is here just for educational purposes):
+		$out = "<p>Please review your order</p>";
+		$out .= "<h2>Products ordered</h2>";
 		
+		$out .=	"<ul>";	
 		// Products
 		foreach($order->children as $p) {
-			$out .= $p->title . ", ";
-			$out .= $p->sc_price . " * ";
-			$out .= $p->sc_qty . "€<br>";
+			$out .= "<li><strong>{$p->title}</strong> {$p->sc_price}€ x {$p->sc_qty} (total: ". $p->sc_qty * $p->sc_price ."€)</li>";
 		}
+		$out .= "</ul>";
 		
-		$out .= $order->sc_price . "<br>";
+		$out .= "<h2>Shipping details</h2>";
 		
+		$out .=	"<ul>";	
+		// Products
+		$out .= "<li>Fullname: $order->sc_fullname</li>";
+		$out .= "<li>Email: $order->email</li>";
+		$out .= "<li>Address: $order->sc_shippingaddress</li>";
+		$out .= "<li>Country: $order->sc_country</li>";
+		$out .= "<li>Username: {$order->sc_customer->name}</li>";
+		$out .= "</ul>";
+		
+		
+		
+		// Usually we would use some payment api or send people to 3rd party service like paypal
+		// and process their reply
+		
+		$out .= "<h3>How do we proceed?</h3>";
 		
 		$out .= "<ul><li><a href='./?ok=invoice'>Send me an invoice</a>";
 		$out .= "<li><a href='./?ok=paid'>I have already paid this</a>";

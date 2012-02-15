@@ -43,12 +43,6 @@ class ShoppingCheckout extends WireData implements Module, ConfigurableModule
 		
 	}
 	
-	
-	public function ready()
-	{
-		
-	}
-	
 	public function renderCheckout()
 	{
 		if(!$this->input->urlSegment1) {
@@ -67,9 +61,18 @@ class ShoppingCheckout extends WireData implements Module, ConfigurableModule
 	public function renderContactForm() {
 		
 		if ($this->input->post->goToPayment) {
-			$this->completeOrder(); // This creates new order-page, but doesn't publish it yet. 
+			// TODO: Sanitize and validate
+			// TODO: Show "review your order" page (with "continue to payment" or "go back to shopping" buttons)
+			$this->createOrder();
 			$this->session->redirect("./{$this->paymentUrlSegment}/");
 		}
+		
+		$sid = session_id();
+		$order = $this->pages->get("template=sc-order, sc_session={$sid}, status=unpublished, limit=1, sort=-created");
+		if ($order->id) {
+			$this->session->redirect("./{$this->paymentUrlSegment}/");
+		}
+		
 		$out = "<h2>" . $this->_("Fill in your details and complete the order.") . "</h2>";
 		$out .= "<form action='./' method='post'>";
 		$out .= "<label for='fullname'>" . $this->_("Fullname:") . "</label><br/>";
@@ -99,7 +102,8 @@ class ShoppingCheckout extends WireData implements Module, ConfigurableModule
 	
 	public function renderPayment() {
 		// Get latest unpublished order from current user
-		$order = $this->pages->get("template=sc-order, sc_customer={$this->user}, status=unpublished, limit=1, sort=-created");
+		$sid = session_id();
+		$order = $this->pages->get("template=sc-order, sc_session={$sid}, status=unpublished, limit=1, sort=-created");
 		$paymentmethod = $this->modules->get("{$order->sc_paymentmethod}");
 		return $paymentmethod->processPayment($order);
 	}
@@ -108,26 +112,24 @@ class ShoppingCheckout extends WireData implements Module, ConfigurableModule
 		if (!$this->session->orderId) return "Payment failed, session lost";
 		
 		$orderId = $this->session->orderId;
+		$this->session->remove('orderId');
+
 		$order = $this->pages->get($orderId);
-		
+
 		if(!$order->id)
 			throw new WireExpection("Payment error, order couldn't be found");
 		
 		if ($order->is(Page::statusUnpublished)) {
-			$out = "Payment failed!";
+			$out = "Payment cancelled or failed!";
 			$out .= "<a href='../{$this->paymentUrlSegment}/'>Try again?</a>";
 			return $out;
 		} else {
 			return "Thank you: $order->title !";
 		}
-		
-		
-		
 	}
 	
-	public function completeOrder()
+	public function createOrder()
 	{
-		// TODO: Sanitize and validate!!!
 		$fullname = $this->input->post->fullname;
 		$address = $this->input->post->address;
 		$email = $this->input->post->email;
@@ -142,10 +144,12 @@ class ShoppingCheckout extends WireData implements Module, ConfigurableModule
 		$order->title = $this->_("Order: ") . $fullname;
 		$order->name = $ordername;
 		$order->sc_fullname = $fullname;
+		$order->email = $email;
 		$order->sc_shippingaddress = $address;
 		$order->sc_price = $this->modules->ShoppingCart->getTotalSumFromItems($items);
 		$order->sc_customer = $this->user;
 		$order->sc_paymentmethod = $paymentmethod;
+		$order->sc_session = session_id();
 		$order->addStatus(Page::statusUnpublished);
 		
 		// Default status will be first one there is on /shop/settings/statuses/
@@ -179,12 +183,7 @@ class ShoppingCheckout extends WireData implements Module, ConfigurableModule
 		// since this is a static function, we can't use $this->modules, so get them from the global wire() function
 		$modules = wire('modules');
 
-		// Populate $data with the default config, because if they've never configured this module before,
-		// the $data provided to this function will be empty. Or, if you add new config items in a new version,
-		// $data won't have it until they configure it. Best bet is to merge defaults with custom, where
-		// custom overwrites the defaults (array_merge).
 		$data = array_merge(self::getDefaultData(), $data);
-
 		
 		$field = $modules->get("InputfieldText");
 		$field->name = "paymentUrlSegment";
@@ -193,7 +192,6 @@ class ShoppingCheckout extends WireData implements Module, ConfigurableModule
 		$field->value = $data['paymentUrlSegment']; 
 		$fields->add($field);
 
-		
 		$field = $modules->get("InputfieldText");
 		$field->name = "completedUrlSegment";
 		$field->label = "UrlSegment for completed step";
