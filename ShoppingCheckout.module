@@ -9,7 +9,7 @@ class ShoppingCheckout extends WireData implements Module, ConfigurableModule
 			'version' => 001,
 			'summary' => 'Handles checkout process for PW Shop',
 			'singular' => false,
-			'autoload' => true,
+			'autoload' => false,
 			'requires' => array(
 				"ShoppingCart",
 				"ShoppingOrdersManagement"
