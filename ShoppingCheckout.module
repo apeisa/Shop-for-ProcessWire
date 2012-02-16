@@ -247,7 +247,7 @@ class ShoppingCheckout extends WireData implements Module, ConfigurableModule
 		
 		// This makes sure that there is always at least empty values on session
 		if (!isset($this->session->orderArray['valid'])) $this->session->set('orderArray', $orderArray);
-		print_r($orderArray);
+
 		return $orderArray;
 		
 	}
