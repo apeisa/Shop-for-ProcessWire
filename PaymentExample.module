@@ -69,11 +69,15 @@ class PaymentExample extends PaymentAbstract {
 		
 		$out .=	"<ul>";	
 		// Products
-		$out .= "<li>Fullname: $order->sc_fullname</li>";
+		$out .= "<li>First name: $order->sc_firstname</li>";
+		$out .= "<li>Last name: $order->sc_lastname</li>";
 		$out .= "<li>Email: $order->email</li>";
-		$out .= "<li>Address: $order->sc_shippingaddress</li>";
+		$out .= "<li>Street address: $order->sc_streetaddress</li>";
+		$out .= "<li>Zip: $order->sc_zip</li>";
+		$out .= "<li>City: $order->sc_city</li>";
 		$out .= "<li>Country: $order->sc_country</li>";
 		$out .= "<li>Username: {$order->sc_customer->name}</li>";
+		$out .= "<li>Email address from user: {$order->sc_customer->email}</li>";
 		$out .= "</ul>";
 		
 		

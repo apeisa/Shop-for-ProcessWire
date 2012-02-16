@@ -27,36 +27,69 @@ class ShoppingCheckout extends WireData implements Module, ConfigurableModule
 		   );
 	}
 	
+	/*
+	 * Default fields and their values and settingsh. This is used in creating
+	 * settings but also on validation and rendering forms.
+	 *
+	 */
 	static public function getInformationFieldsArray() {
 		$fields = array();
+
 		$fields['firstname']['value'] = '';
 		$fields['firstname']['label'] = __('First name');
 		$fields['firstname']['visible'] = 1;
 		$fields['firstname']['required'] = 1;
+		
 		$fields['lastname']['value'] = '';
 		$fields['lastname']['label'] = __('Last name');
 		$fields['lastname']['visible'] = 1;
 		$fields['lastname']['required'] = 1;
+		
 		$fields['email']['value'] = '';
 		$fields['email']['label'] = __('Email');
 		$fields['email']['visible'] = 1;
 		$fields['email']['required'] = 1;
+		
+		$fields['phone']['value'] = '';
+		$fields['phone']['label'] = __('Phone number');
+		$fields['phone']['visible'] = 1;
+		$fields['phone']['required'] = 0;
+
 		$fields['streetaddress']['value'] = '';
 		$fields['streetaddress']['label'] = __('Street address');
 		$fields['streetaddress']['visible'] = 1;
 		$fields['streetaddress']['required'] = 1;
+
 		$fields['zip']['value'] = '';
 		$fields['zip']['label'] = __('ZIP');
 		$fields['zip']['visible'] = 0;
 		$fields['zip']['required'] = 0;
+
 		$fields['city']['value'] = '';
 		$fields['city']['label'] = __('City');
 		$fields['city']['visible'] = 1;
 		$fields['city']['required'] = 1;
+
 		$fields['country']['value'] = '';
 		$fields['country']['label'] = __('Country');
 		$fields['country']['visible'] = 0;
 		$fields['country']['required'] = 0;
+
+		$fields['greetings']['value'] = '';
+		$fields['greetings']['label'] = __('Greetings for the shop');
+		$fields['greetings']['visible'] = 1;
+		$fields['greetings']['required'] = 0;
+		$fields['greetings']['type'] = 'textarea';
+
+		$fields['custom1']['value'] = '';
+		$fields['custom1']['label'] = __('Custom field #1');
+		$fields['custom1']['visible'] = 0;
+		$fields['custom1']['required'] = 0;
+
+		$fields['custom2']['value'] = '';
+		$fields['custom2']['label'] = __('Custom field #2');
+		$fields['custom2']['visible'] = 0;
+		$fields['custom2']['required'] = 0;
 		
 		return $fields;
 	}
@@ -80,6 +113,15 @@ class ShoppingCheckout extends WireData implements Module, ConfigurableModule
 		
 	}
 	
+	/*
+	 * Simple controller to handle checkout process. Actually 4 steps:
+	 *
+	 * 1. renderInformation()
+	 * 2. renderConfirmation()
+	 * 3. renderPayment()
+	 * 4. renderCompleted()
+	 *
+	 */
 	public function renderCheckout()
 	{
 		if(!$this->input->urlSegment1) {
@@ -98,7 +140,18 @@ class ShoppingCheckout extends WireData implements Module, ConfigurableModule
 		return $out;
 	}
 	
+	/*
+	 * Returns form to ask customer information before proceeding to confirmation.
+	 * After valid information redirects to confirmation url.
+	 *
+	 */
 	public function renderInformation() {
+		$sid = session_id();
+		$order = $this->pages->get("template=sc-order, sc_session={$sid}, status=unpublished, limit=1, sort=-created");
+		if ($order->id) {
+			$this->session->redirect("./{$this->paymentUrlSegment}/");
+		}
+		
 		if ($this->modules->ShoppingCart->getNumberOfItems() == 0)
 			return "<p>" . $this->_("Your shopping cart is empty.") . "</p>";
 		
@@ -112,14 +165,10 @@ class ShoppingCheckout extends WireData implements Module, ConfigurableModule
 		}
 		
 		
-		$sid = session_id();
-		$order = $this->pages->get("template=sc-order, sc_session={$sid}, status=unpublished, limit=1, sort=-created");
-		if ($order->id) {
-			$this->session->redirect("./{$this->paymentUrlSegment}/");
-		}
 		
 		
-		$out = "<h2>" . $this->_("Fill in your details and complete the order.") . "</h2>";
+		
+		$out = "<h2>" . $this->_("Please provide your shipping address and contact information.") . "</h2>";
 		$out .= "<form action='./' method='post'>";
 		
 		$out .= $this->renderInformationFormItems();
@@ -144,8 +193,13 @@ class ShoppingCheckout extends WireData implements Module, ConfigurableModule
 		return $out;
 	}
 	
+	/*
+	 * Returns simple view to review order status before proceeding to payment.
+	 *
+	 */
 	public function renderConfirmation() {
 		if ($this->input->post->submit) {
+			$this->validateInformation(true); // We still need to validate here
 			$this->createOrder();
 			$this->session->redirect("../{$this->paymentUrlSegment}/");
 		}
@@ -153,6 +207,7 @@ class ShoppingCheckout extends WireData implements Module, ConfigurableModule
 		$out  = $this->modules->ShoppingCart->renderCart(true);
 		$out .= "<form action='./' method='post'>";
 		$out .= $this->renderInformationFormItems(true);
+		$out .= "<input type='hidden' name='paymentmethod' value='". $this->session->orderArray['paymentmethod']['value'] ."' />";
 		$out .= "<input type='submit' name='submit' value='". $this->_("Pay this order") ."' />";
 		$out .= "</form>";
 		$out .= "<a href='../'>". $this->_("Go back to edit your information") ."</a>";
@@ -160,6 +215,10 @@ class ShoppingCheckout extends WireData implements Module, ConfigurableModule
 		return $out;
 	}
 	
+	/*
+	 * Returns processPayment() method from chosen paymentMethod class.
+	 * 
+	 */
 	public function renderPayment() {
 		// Get latest unpublished order from current user
 		$sid = session_id();
@@ -168,15 +227,15 @@ class ShoppingCheckout extends WireData implements Module, ConfigurableModule
 		return $paymentmethod->processPayment($order);
 	}
 	
-	
-	
-	
+	/*
+	 * Simple view after the payent. Renders information about whether the order
+	 * was success or not
+	 *
+	 */
 	public function renderCompleted() {
 		if (!$this->session->orderId) return "Payment failed, session lost";
 		
 		$orderId = $this->session->orderId;
-		$this->session->remove('orderId');
-
 		$order = $this->pages->get($orderId);
 
 		if(!$order->id)
@@ -187,22 +246,39 @@ class ShoppingCheckout extends WireData implements Module, ConfigurableModule
 			$out .= "<a href='../{$this->paymentUrlSegment}/'>Try again?</a>";
 			return $out;
 		} else {
-			return "Thank you: $order->title !";
+			$this->session->remove('orderId');			
+			return "Thank you: $order->title !";			
 		}
 	}
-	
+	/*
+	 * Return markup for Information form items
+	 *
+	 * @param boolen $viewOnly false|true if you want to allow customer to edit
+	 * information, then use without viewOnly.
+	 *
+	 * @return string markup
+	 *
+	 */
 	public function renderInformationFormItems($viewOnly = false) {
+		
 		$out = '';
 		foreach($this->session->orderArray['fields'] as $key => $field) {
 			
 			if ($field['visible'] == 1) {
+				if (!isset($field['type'])) $field['type'] = 'text';
 				$class  = ($field['required']) ? 'required' : '';
 				$class .= (isset($field['error'])) ? ' error' : '';
 				
 				$out .= "<div class='$class'><label for='$key'>". $field['label'] .":</label> ";
 				if (isset($field['error'])) $out .= "<p class='errormsg'>". $field['error'] ."</p>";
 				if (!$viewOnly) {
-					$out .= "<input class='$class' name='$key' value='". $field['value'] ."' />";
+					switch($field['type']) {
+						case "textarea":
+							$out .= "<textarea class='$class' name='$key'>". $field['value'] ."</textarea>";
+							break;
+						default:
+							$out .= "<input class='$class' name='$key' value='". $field['value'] ."' />";
+					}
 				}
 				else {
 					$out .= "<span>". $field['value'] ."</span>";
@@ -215,43 +291,68 @@ class ShoppingCheckout extends WireData implements Module, ConfigurableModule
 		return $out;
 	}
 	
-	
+	/*
+	 * Returns order data as an array
+	 *
+	 * @param boolean $validate If you validate, it will fetch data from post
+	 * and sanitize & validate that. If false, it will just give you orderArray
+	 * with current (should be default or once validated)
+	 *
+	 * @return array keeps information about order information fields (validation
+	 * errors, actual values etc)
+	 *
+	 */
 	public function validateInformation($validate = true) {
 		
 		$orderArray = Array();
-		$fields = self::getInformationFieldsArray();
 		$orderArray['valid'] = true;
+		
+		$orderArray['paymentmethod']['value'] = $this->session->orderArray['paymentmethod']['value'];
+		$orderArray['paymentmethod']['label'] = $this->_("Payment method");
+		
+		$fields = self::getInformationFieldsArray();
 		
 		
 		foreach($fields as $key => $field) {
-			$fields[$key]['value'] = $this->input->post->$key;
+			if(isset($this->session->orderArray['fields'][$key])) {
+				$field['value'] = $this->session->orderArray['fields'][$key]['value'];
+			}
 		}
 		
 		$orderArray['fields'] = $fields;
-		
-		$orderArray['paymentmethod']['value'] = $this->input->post->paymentmethod;
-		$orderArray['paymentmethod']['label'] = $this->_("Payment method");
-		
+
 		if ($validate) {
 			foreach($orderArray['fields'] as $key => $field) {
 				
+				$field['value'] = $this->input->post->$key;
+				
 				$orderArray['fields'][$key]['value'] = $this->sanitizer->text($field['value']);
+				
+				echo $orderArray['fields'][$key]['value'];
 				
 				if ($orderArray['fields'][$key]['required'] && $orderArray['fields'][$key]['value'] == '') {
 					$orderArray['valid'] = false;
 					$orderArray['fields'][$key]['error'] = $this->_("This is a required field");
 				}
 			}
+			
+			$orderArray['paymentmethod']['value'] = $this->sanitizer->fieldName($this->input->post->paymentmethod);
 			$this->session->set('orderArray', $orderArray);
 		}
 		
-		// This makes sure that there is always at least empty values on session
+
 		if (!isset($this->session->orderArray['valid'])) $this->session->set('orderArray', $orderArray);
 
 		return $orderArray;
 		
 	}
-	
+	/*
+	 * return true if success
+	 *
+	 * Saves order page and it children products to database and destroys session
+	 * based shopping cart fron ShoppingCart table
+	 *
+	 */	
 	public function createOrder()
 	{
 		if ($this->session->orderArray['valid'] == FALSE) throw new WireException("Non-valid order got through.");
@@ -266,9 +367,15 @@ class ShoppingCheckout extends WireData implements Module, ConfigurableModule
 		$order->parent = $this->pages->get("template=admin,name=orders");
 		$order->title = $this->_("Order: ") . $fields['firstname']['value'] . ' ' . $fields['lastname']['value'];
 		$order->name = $this->sanitizer->pageName($fields['firstname']['value'] . $fields['lastname']['value']) . time();
-		$order->sc_fullname = $fields['firstname'] . ' ' . $fields['lastname']['value'];
+		$order->sc_firstname = $fields['firstname']['value'];
+		$order->sc_lastname = $fields['lastname']['value'];
 		$order->email = $fields['email']['value'];
-		$order->sc_shippingaddress = $fields['streetaddress']['value'];
+		$order->sc_streetaddress = $fields['streetaddress']['value'];
+		$order->sc_city = $fields['city']['value'];
+		$order->sc_zip = $fields['zip']['value'];
+		$order->sc_country = $fields['country']['value'];
+		$order->sc_custom1 = $fields['custom1']['value'];
+		$order->sc_custom2 = $fields['custom2']['value'];
 		$order->sc_price = $this->modules->ShoppingCart->getTotalSumFromItems($items);
 		$order->sc_customer = $this->user;
 		$order->sc_paymentmethod = $fields['paymentmethod']['value'];
@@ -298,6 +405,8 @@ class ShoppingCheckout extends WireData implements Module, ConfigurableModule
 		
 		$this->session->remove('orderArray');
 		$this->db->query("DELETE FROM ShoppingCart WHERE session_id = '" . session_id() . "'");
+		
+		return ($order->id) ? true : false;
 	}
 	
 	static public function getModuleConfigInputfields(array $data) {

@@ -39,7 +39,7 @@ class ShoppingOrdersManagement extends Process {
 	
 				 // output in table rows with edit link and delete checkbox?
 				 $table->row(array(
-					 $order->sc_fullname => "edit/?id={$order->id}",
+					 $order->sc_firstname . " " . $order->sc_lastname => "edit/?id={$order->id}",
 					 $order->sc_status->title,
 					 $order->sc_price . ' &euro;',
 					 date($this->config->dateFormat,$order->created)
@@ -110,7 +110,11 @@ class ShoppingOrdersManagement extends Process {
 
 		$out .= "<div class='sc-header'><h2><span>{$order->sc_status->title}</span> #{$id}</h2></div>";
 
-		$out .= "<div class='customer'><p><b>" . $order->sc_fullname . "</b><br />". $order->sc_shippingaddress . "</p></div>";
+		$out .= "<div class='customer'><p><b>" .
+				$order->sc_firstname . " ".
+				$order->sc_lastname ."</b></p><p>".
+				$order->sc_streetaddress . "<br />".
+				$order->sc_city."</p></div>";
 
 
 		$table = $this->modules->get("MarkupAdminDataTable");
@@ -378,21 +382,51 @@ class ShoppingOrdersManagement extends Process {
 		$fg->add($f);
 		$fg->save();
 		
-		if (!$this->fields->get('sc_fullname')) {
+		if (!$this->fields->get('sc_firstname')) {
 			$f = new Field();
 			$f->type = $this->modules->get("FieldtypeText");
-			$f->name = 'sc_fullname';
-			$f->label = 'Full name';
+			$f->name = 'sc_firstname';
+			$f->label = 'First name';
 			$f->save();
 		}
 		$fg->add($f);
 		$fg->save();
 		
-		if (!$this->fields->get('sc_shippingaddress')) {
+		if (!$this->fields->get('sc_lastname')) {
 			$f = new Field();
-			$f->type = $this->modules->get("FieldtypeTextarea");
-			$f->name = 'sc_shippingaddress';
-			$f->label = 'Shipping address';
+			$f->type = $this->modules->get("FieldtypeText");
+			$f->name = 'sc_lastname';
+			$f->label = 'Last name';
+			$f->save();
+		}
+		$fg->add($f);
+		$fg->save();
+		
+		if (!$this->fields->get('sc_streetaddress')) {
+			$f = new Field();
+			$f->type = $this->modules->get("FieldtypeText");
+			$f->name = 'sc_streetaddress';
+			$f->label = 'Street address';
+			$f->save();
+		}
+		$fg->add($f);
+		$fg->save();
+		
+		if (!$this->fields->get('sc_zip')) {
+			$f = new Field();
+			$f->type = $this->modules->get("FieldtypeText");
+			$f->name = 'sc_zip';
+			$f->label = 'ZIP / Postal code';
+			$f->save();
+		}
+		$fg->add($f);
+		$fg->save();
+		
+		if (!$this->fields->get('sc_city')) {
+			$f = new Field();
+			$f->type = $this->modules->get("FieldtypeText");
+			$f->name = 'sc_city';
+			$f->label = 'City';
 			$f->save();
 		}
 		$fg->add($f);
@@ -403,6 +437,36 @@ class ShoppingOrdersManagement extends Process {
 			$f->type = $this->modules->get("FieldtypeText");
 			$f->name = 'sc_country';
 			$f->label = 'Country';
+			$f->save();
+		}
+		$fg->add($f);
+		$fg->save();
+		
+		if (!$this->fields->get('sc_greetings')) {
+			$f = new Field();
+			$f->type = $this->modules->get("FieldtypeTextarea");
+			$f->name = 'sc_greetings';
+			$f->label = 'Greetings for shop';
+			$f->save();
+		}
+		$fg->add($f);
+		$fg->save();
+		
+		if (!$this->fields->get('sc_custom1')) {
+			$f = new Field();
+			$f->type = $this->modules->get("FieldtypeTextarea");
+			$f->name = 'sc_custom1';
+			$f->label = 'Custom field #1';
+			$f->save();
+		}
+		$fg->add($f);
+		$fg->save();
+		
+		if (!$this->fields->get('sc_custom2')) {
+			$f = new Field();
+			$f->type = $this->modules->get("FieldtypeTextarea");
+			$f->name = 'sc_custom2';
+			$f->label = 'Custom field #2';
 			$f->save();
 		}
 		$fg->add($f);
