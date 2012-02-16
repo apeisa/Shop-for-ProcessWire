@@ -17,81 +17,74 @@ class ShoppingCheckout extends WireData implements Module, ConfigurableModule
 		);
 	}
 	
-	public $firstnameLabel;
-	
 	static public function getDefaultData() {
-	   return array(
+		
+		$required = array(
+			'visible' => 1,
+			'required' => 1
+		);
+		$visible = array(
+			'visible' => 1,
+			'required' => 0
+		);
+		$hidden = array(
+			'visible' => 0,
+			'required' => 0
+		);
+				
+	    return array(
+			
 		   'confirmationUrlSegment' => "confirmation",
-		   'paymentUrlSegment' => "payment",
-		   'completedUrlSegment' => "completed",
-		   );
-	}
-	
-	/*
-	 * Default fields and their values and settingsh. This is used in creating
-	 * settings but also on validation and rendering forms.
-	 *
-	 */
-	static public function getInformationFieldsArray() {
-		$fields = array();
-
-		$fields['firstname']['value'] = '';
-		$fields['firstname']['label'] = __('First name');
-		$fields['firstname']['visible'] = 1;
-		$fields['firstname']['required'] = 1;
-		
-		$fields['lastname']['value'] = '';
-		$fields['lastname']['label'] = __('Last name');
-		$fields['lastname']['visible'] = 1;
-		$fields['lastname']['required'] = 1;
-		
-		$fields['email']['value'] = '';
-		$fields['email']['label'] = __('Email');
-		$fields['email']['visible'] = 1;
-		$fields['email']['required'] = 1;
-		
-		$fields['phone']['value'] = '';
-		$fields['phone']['label'] = __('Phone number');
-		$fields['phone']['visible'] = 1;
-		$fields['phone']['required'] = 0;
-
-		$fields['streetaddress']['value'] = '';
-		$fields['streetaddress']['label'] = __('Street address');
-		$fields['streetaddress']['visible'] = 1;
-		$fields['streetaddress']['required'] = 1;
-
-		$fields['zip']['value'] = '';
-		$fields['zip']['label'] = __('ZIP');
-		$fields['zip']['visible'] = 0;
-		$fields['zip']['required'] = 0;
-
-		$fields['city']['value'] = '';
-		$fields['city']['label'] = __('City');
-		$fields['city']['visible'] = 1;
-		$fields['city']['required'] = 1;
-
-		$fields['country']['value'] = '';
-		$fields['country']['label'] = __('Country');
-		$fields['country']['visible'] = 0;
-		$fields['country']['required'] = 0;
-
-		$fields['greetings']['value'] = '';
-		$fields['greetings']['label'] = __('Greetings for the shop');
-		$fields['greetings']['visible'] = 1;
-		$fields['greetings']['required'] = 0;
-		$fields['greetings']['type'] = 'textarea';
-
-		$fields['custom1']['value'] = '';
-		$fields['custom1']['label'] = __('Custom field #1');
-		$fields['custom1']['visible'] = 0;
-		$fields['custom1']['required'] = 0;
-
-		$fields['custom2']['value'] = '';
-		$fields['custom2']['label'] = __('Custom field #2');
-		$fields['custom2']['visible'] = 0;
-		$fields['custom2']['required'] = 0;
-		
-		return $fields;
+		   'paymentUrlSegment' 		=> "payment",
+		   'completedUrlSegment' 	=> "completed",
+		   
+		   'fields' => array(
+				'firstname' => array(
+						'label' 	=> __('First name'),
+						'defaults' 	=> $required
+				),
+				'lastname' => array(
+						'label' 	=> __('Last name'),
+						'defaults'	=> $required
+				),
+				'email'	=> array(
+						'label'		=> __('Email'),
+						'defaults'	=> $required
+				),
+				'phone'	=> array(
+						'label'		=> __('Phone number'),
+						'defaults'	=> $visible
+				),
+				'streetaddress'	=> array(
+						'label'		=> __('Street address'),
+						'defaults'	=> $required
+				),
+				'zip' => array(
+						'label'		=> __('Zip'),
+						'defaults'	=> $hidden
+				),
+				'city' => array(
+						'label'		=> __('City'),
+						'defaults'	=> $required
+				),
+				'country' => array(
+						'label'		=> __('Country'),
+						'defaults'	=> $hidden
+				),
+				'greetings' => array(
+						'label'		=> __('Details about my order'),
+						'defaults'	=> $visible
+				),
+				'custom1' => array(
+						'label'		=> __('Custom field #1'),
+						'defaults'	=> $hidden
+				),
+				'custom2' => array(
+						'label'		=> __('Custom field #2'),
+						'defaults'	=> $hidden
+				)
+			)
+	    );
 	}
 
 	/**
@@ -103,14 +96,35 @@ class ShoppingCheckout extends WireData implements Module, ConfigurableModule
 	 *
 	 */
 	public function __construct() {
-	   foreach(self::getDefaultData() as $key => $value) {
+		$defaultData = self::getDefaultData();
+		$fields = $defaultData['fields'];
+		unset($defaultData['fields']);
+	    foreach($defaultData as $key => $value) {
 		   $this->$key = $value;
-	   }
+	    }
+		foreach($fields as $key => $arr) {
+			if ($arr['defaults']['visible'] == 1) $this->$key = 1;
+			if ($arr['defaults']['required'] == 1) {
+				$reqKey = $key . 'Required';
+				$this->$reqKey = 1;
+			}
+		}
 	}
 	
 	public function init()
 	{
-		
+		$data = $this->modules->getModuleConfigData('ShoppingCheckout');
+		foreach($data as $key => $value) {
+		   $this->$key = $value;
+	    }
+	}
+	
+	public function ready()
+	{
+		$data = $this->modules->getModuleConfigData('ShoppingCheckout');
+		foreach($data as $key => $value) {
+		   $this->$key = $value;
+	    }
 	}
 	
 	/*
@@ -124,6 +138,11 @@ class ShoppingCheckout extends WireData implements Module, ConfigurableModule
 	 */
 	public function renderCheckout()
 	{
+		$data = $this->modules->getModuleConfigData('ShoppingCheckout');
+		foreach($data as $key => $value) {
+		   $this->$key = $value;
+	    }		
+		
 		if(!$this->input->urlSegment1) {
 			$out = $this->renderInformation();
 		}
@@ -264,9 +283,11 @@ class ShoppingCheckout extends WireData implements Module, ConfigurableModule
 		$out = '';
 		foreach($this->session->orderArray['fields'] as $key => $field) {
 			
-			if ($field['visible'] == 1) {
+			$reqKey = $key . 'Required';
+			
+			if ($this->$key) {
 				if (!isset($field['type'])) $field['type'] = 'text';
-				$class  = ($field['required']) ? 'required' : '';
+				$class  = ($this->$reqKey) ? 'required' : '';
 				$class .= (isset($field['error'])) ? ' error' : '';
 				
 				$out .= "<div class='$class'><label for='$key'>". $field['label'] .":</label> ";
@@ -310,19 +331,26 @@ class ShoppingCheckout extends WireData implements Module, ConfigurableModule
 		$orderArray['paymentmethod']['value'] = $this->session->orderArray['paymentmethod']['value'];
 		$orderArray['paymentmethod']['label'] = $this->_("Payment method");
 		
-		$fields = self::getInformationFieldsArray();
-		
+		$defaultData = self::getDefaultData();
+		$fields = $defaultData['fields'];
 		
 		foreach($fields as $key => $field) {
+			// If not visible field, remove from array
+			if (!$this->$key) continue;
+			
+			$orderArray['fields'][$key]['label'] = $field['label'];
+			$orderArray['fields'][$key]['value'] = '';
+			
 			if(isset($this->session->orderArray['fields'][$key])) {
-				$field['value'] = $this->session->orderArray['fields'][$key]['value'];
+				$orderArray['fields'][$key]['value'] = $this->session->orderArray['fields'][$key]['value'];
 			}
 		}
-		
-		$orderArray['fields'] = $fields;
+	
 
 		if ($validate) {
 			foreach($orderArray['fields'] as $key => $field) {
+				
+				$reqKey = $key . 'Required';
 				
 				$field['value'] = $this->input->post->$key;
 				
@@ -330,7 +358,7 @@ class ShoppingCheckout extends WireData implements Module, ConfigurableModule
 				
 				echo $orderArray['fields'][$key]['value'];
 				
-				if ($orderArray['fields'][$key]['required'] && $orderArray['fields'][$key]['value'] == '') {
+				if ($this->$reqKey && $orderArray['fields'][$key]['value'] == '') {
 					$orderArray['valid'] = false;
 					$orderArray['fields'][$key]['error'] = $this->_("This is a required field");
 				}
@@ -342,6 +370,8 @@ class ShoppingCheckout extends WireData implements Module, ConfigurableModule
 		
 
 		if (!isset($this->session->orderArray['valid'])) $this->session->set('orderArray', $orderArray);
+		
+		
 
 		return $orderArray;
 		
@@ -374,6 +404,7 @@ class ShoppingCheckout extends WireData implements Module, ConfigurableModule
 		$order->sc_city = $fields['city']['value'];
 		$order->sc_zip = $fields['zip']['value'];
 		$order->sc_country = $fields['country']['value'];
+		$order->sc_greetings = $fields['greetings']['value'];
 		$order->sc_custom1 = $fields['custom1']['value'];
 		$order->sc_custom2 = $fields['custom2']['value'];
 		$order->sc_price = $this->modules->ShoppingCart->getTotalSumFromItems($items);
@@ -417,39 +448,41 @@ class ShoppingCheckout extends WireData implements Module, ConfigurableModule
 		$modules = wire('modules');
 
 		$data = array_merge(self::getDefaultData(), $data);
-		
-		$urls = $modules->get("InputfieldFieldset");
-		$urls->label = "Url segments";
-		$urls->set('collapsed', Inputfield::collapsedYes);
+				
+		//$urls = $modules->get("InputfieldFieldset");
+		//$urls->label = "Url segments";
+		//$urls->set('collapsed', Inputfield::collapsedYes);
 		
 		$field = $modules->get("InputfieldText");
 		$field->attr('name', 'confirmationUrlSegment');
 		$field->attr('value', $data['confirmationUrlSegment']); 		
 		$field->label = "UrlSegment for confirmation step";
-		$field->description = "This is only shown in the url.";		
-		$urls->add($field);
+		$field->description = "This is only shown in the url. Default: confirmation";		
+		//$urls->add($field);
+		$fields->add($field);
 		
 		$field = $modules->get("InputfieldText");
-		$field->name = "paymentUrlSegment";
+		$field->attr('name', 'paymentUrlSegment');
+		$field->attr('value', $data['paymentUrlSegment']); 		
 		$field->label = "UrlSegment for payment step";
-		$field->description = "This is only shown in the url.";
-		$field->value = $data['paymentUrlSegment']; 
-		$urls->add($field);
+		$field->description = "This is only shown in the url. Default: payment";
+		//$urls->add($field);
+		$fields->add($field);
 
 		$field = $modules->get("InputfieldText");
-		$field->name = "completedUrlSegment";
+		$field->attr('name', 'completedUrlSegment');
+		$field->attr('value', $data['completedUrlSegment']); 		
 		$field->label = "UrlSegment for completed step";
-		$field->description = "This is only shown in the url.";
-		$field->value = $data['completedUrlSegment']; 
-		$urls->add($field);
+		$field->description = "This is only shown in the url. Default: completed";
+		//$urls->add($field);
+		$fields->add($field);
 		
-		$fields->add($urls);
-		
+		//$fields->add($urls);
 		
 		$customer = $modules->get("InputfieldFieldset");
 		$customer->label = "Customer fields";
 		
-		$informationFields = self::getInformationFieldsArray();
+		$informationFields = $data['fields'];
 		
 		// This creates visible / required settings for each information field
 		foreach($informationFields as $key => $field) {
@@ -458,11 +491,10 @@ class ShoppingCheckout extends WireData implements Module, ConfigurableModule
 			$fs->set('collapsed', Inputfield::collapsedYes);
 			
 			$f = $modules->get("InputfieldCheckbox");
-			$name = $key . "Visible";
-			$f->name = $name;
+			$f->name = $key;
 			$f->label = "Use this field?";
 			$f->value = 1;
-			$f->attr('checked', empty($data[$name]) ? '' : 'checked');
+			$f->attr('checked', empty($informationFields[$key]['defaults']['visible']) ? '' : 'checked');
 			$fs->add($f);
 			
 			$f = $modules->get("InputfieldCheckbox");
@@ -470,7 +502,7 @@ class ShoppingCheckout extends WireData implements Module, ConfigurableModule
 			$f->name = $name;
 			$f->label = "Required?";
 			$f->value = 1;
-			$f->attr('checked', empty($data[$name]) ? '' : 'checked');
+			$f->attr('checked', empty($informationFields[$key]['defaults']['required']) ? '' : 'checked');
 			$fs->add($f);
 			
 			$customer->add($fs);
