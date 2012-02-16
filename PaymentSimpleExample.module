@@ -1,0 +1,47 @@
+<?php
+
+require_once(dirname(__FILE__) . '/PaymentAbstract.php');
+
+class PaymentSimpleExample extends PaymentAbstract {
+	
+    public static function getModuleInfo()
+	{
+		return array(
+			'title' => 'Simple Payment Example',
+			'version' => 001,
+			'summary' => 'Simplest possible payment example module for PW Shop',
+			'singular' => false,
+			'autoload' => false
+		);
+	}
+    public function init() {
+		
+	}
+	
+	/*
+	 *
+	 * returns nothing. You should edit and save $order page. If payment was succesful,
+	 * then do $order->removeStatus(Page::statusUnpublished) and remember to save the order!
+	 *
+	 * If order was also paid, then do $order->sc_paid = time();
+	 *
+	 * If order was not paid, but it was succesful (like invoice, money on delivery etc)
+	 * then just publish the order, but do not set sc_paid value.
+	 *
+	 * After you have manipulated the order, then just to redirect to $this->completedUrl
+	 *
+	 *
+	 * @param Page $order keeps the page object for the order
+	 *
+	 */
+    public function processPayment(Page $order) {
+		
+		$order->setOutputFormatting(false);
+		$order->sc_paid = time(); // Set order as paid
+		$order->removeStatus(Page::statusUnpublished); // Set order as finished
+		$order->save();
+		
+		$this->session->redirect($this->completedUrl); 
+	
+    }
+}
