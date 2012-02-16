@@ -9,7 +9,7 @@ class ShoppingCheckout extends WireData implements Module, ConfigurableModule
 			'version' => 001,
 			'summary' => 'Handles checkout process for PW Shop',
 			'singular' => false,
-			'autoload' => false,
+			'autoload' => true,
 			'requires' => array(
 				"ShoppingCart",
 				"ShoppingOrdersManagement"
@@ -19,8 +19,25 @@ class ShoppingCheckout extends WireData implements Module, ConfigurableModule
 	
 	static public function getDefaultData() {
 	   return array(
+		   'confirmationUrlSegment' => "confirmation",
 		   'paymentUrlSegment' => "payment",
-		   'completedUrlSegment' => "completed"
+		   'completedUrlSegment' => "completed",
+		   'firstnameVisible' => 1,
+		   'firstnameRequired' => 1,
+		   'lastnameVisible' => 1,
+		   'lastnameRequired' => 1,
+		   'emailVisible' => 1,
+		   'emailRequired' => 1,
+		   'streetaddressVisible' => 1,
+		   'streetaddressRequired' => 1,
+		   'zipVisible' => 0,
+		   'zipRequired' => 0,
+		   'cityVisible' => 1,
+		   'cityRequired' => 1,
+		   'countryVisible' => 0,
+		   'countryRequired' => 0,
+		   'informationVisible' => 1,
+		   'informationRequired' => 0
 		   );
 	}
 
@@ -46,7 +63,10 @@ class ShoppingCheckout extends WireData implements Module, ConfigurableModule
 	public function renderCheckout()
 	{
 		if(!$this->input->urlSegment1) {
-			$out = $this->renderContactForm();
+			$out = $this->renderInformation();
+		}
+		else if ($this->input->urlSegment1 == $this->confirmationUrlSegment) {
+			$out = $this->renderConfirmation();
 		}
 		else if ($this->input->urlSegment1 == $this->paymentUrlSegment) {
 			$out = $this->renderPayment();
@@ -58,14 +78,24 @@ class ShoppingCheckout extends WireData implements Module, ConfigurableModule
 		return $out;
 	}
 	
-	public function renderContactForm() {
+	public function renderInformation() {
+		if ($this->modules->ShoppingCart->getNumberOfItems() == 0)
+			return "<p>" . $this->_("Your shopping cart is empty.") . "</p>";
 		
-		if ($this->input->post->goToPayment) {
+		if (!$this->input->post->submit) {
+			$this->validateInformation(false);
+		} else {
+			
+			if($this->validateInformation(true)) {
+				
+				$this->session->redirect("./{$this->confirmationUrlSegment}/");
+				
+			}
 			// TODO: Sanitize and validate
 			// TODO: Show "review your order" page (with "continue to payment" or "go back to shopping" buttons)
-			$this->createOrder();
-			$this->session->redirect("./{$this->paymentUrlSegment}/");
+			
 		}
+		
 		
 		$sid = session_id();
 		$order = $this->pages->get("template=sc-order, sc_session={$sid}, status=unpublished, limit=1, sort=-created");
@@ -73,29 +103,44 @@ class ShoppingCheckout extends WireData implements Module, ConfigurableModule
 			$this->session->redirect("./{$this->paymentUrlSegment}/");
 		}
 		
+		
 		$out = "<h2>" . $this->_("Fill in your details and complete the order.") . "</h2>";
 		$out .= "<form action='./' method='post'>";
-		$out .= "<label for='fullname'>" . $this->_("Fullname:") . "</label><br/>";
-		$out .= "<input name='fullname' /><br/><br/>";
-		$out .= "<label for='email'>" . $this->_("E-Mail:") . "</label><br/>";
-		$out .= "<input name='email' /><br/><br/>";
-		$out .= "<label for='address'>" . $this->_("Address:") . "</label><br/>";
-		$out .= "<textarea name='address'></textarea><br/><br/>";
+		
+		$out .= $this->renderInformationFormItems();
+		
 		$paymentModules = $this->modules->find('className^=Payment');
 		if ($paymentModules->count() > 0) {
 			$out .= "<select name='paymentmethod'>";
 			foreach($paymentModules as $module) {
 				$info = $module->getModuleInfo();
-				$out .= "<option value='". get_class($module) ."'>".$info['title']."</option>";
+				$selected = ($this->session->orderArray['paymentmethod']['value'] == get_class($module)) ? "selected" : "";
+				$out .= "<option $selected value='". get_class($module) ."'>".$info['title']."</option>";
 			}
 			$out .= "</select>";
-			$out .= "<input type='submit' name='goToPayment' value='" . $this->_("Complete the order") . "' />";
+			$out .= "<input type='submit' name='submit' value='" . $this->_("Complete the order") . "' />";
 			
 		} else {
 			$out .= "<p>No payment methods installed, you should have at least one</p>";
 		}
 		
 		$out .= "</form>";
+		
+		return $out;
+	}
+	
+	public function renderConfirmation() {
+		if ($this->input->post->submit) {
+			$this->createOrder();
+			$this->session->redirect("../{$this->paymentUrlSegment}/");
+		}
+		
+		$out  = $this->modules->ShoppingCart->renderCart(true);
+		$out .= "<form action='./' method='post'>";
+		$out .= $this->renderInformationFormItems(true);
+		$out .= "<input type='submit' name='submit' value='". $this->_("Pay this order") ."' />";
+		$out .= "</form>";
+		$out .= "<a href='../'>". $this->_("Go back to edit your information") ."</a>";
 		
 		return $out;
 	}
@@ -107,6 +152,9 @@ class ShoppingCheckout extends WireData implements Module, ConfigurableModule
 		$paymentmethod = $this->modules->get("{$order->sc_paymentmethod}");
 		return $paymentmethod->processPayment($order);
 	}
+	
+	
+	
 	
 	public function renderCompleted() {
 		if (!$this->session->orderId) return "Payment failed, session lost";
@@ -128,27 +176,96 @@ class ShoppingCheckout extends WireData implements Module, ConfigurableModule
 		}
 	}
 	
+	public function renderInformationFormItems($viewOnly = false) {
+		$out = '';
+		foreach($this->session->orderArray['fields'] as $key => $field) {
+			$visible = $key . 'Visible';
+			$required = $key . 'Required';
+			
+			if ($this->$visible) {
+				$class  = ($this->$required) ? 'required' : '';
+				$class .= (isset($field['error'])) ? ' error' : '';
+				
+				$out .= "<div class='$class'><label for='$key'>". $field['label'] ."</label>";
+				if (isset($field['error'])) $out .= "<p class='errormsg'>". $field['error'] ."</p>";
+				if (!$viewOnly) {
+					$out .= "<input class='$class' name='$key' value='". $field['value'] ."' />";
+				}
+				else {
+					$out .= "<span>". $field['value'] ."</span>";
+					$out .= "<input type='hidden' name='$key' value='". $field['value'] ."' />";
+				}
+				$out .= "</div>";
+			}
+		}
+		
+		return $out;
+	}
+	
+	
+	public function validateInformation($validate = true) {
+		
+		$orderArray = Array();
+		$orderArray['valid'] = true;
+		
+		$orderArray['fields']['firstname']['value'] = $this->input->post->firstname;
+		$orderArray['fields']['firstname']['label'] = $this->_("First name");
+		$orderArray['fields']['lastname']['value'] = $this->input->post->lastname;
+		$orderArray['fields']['lastname']['label'] = $this->_("Last name");
+		$orderArray['fields']['email']['value'] = $this->sanitizer->email($this->input->post->email);
+		$orderArray['fields']['email']['label'] = $this->_("Email");
+		$orderArray['fields']['streetaddress']['value'] = $this->input->post->streetaddress;
+		$orderArray['fields']['streetaddress']['label'] = $this->_("Street address");
+		$orderArray['fields']['zip']['value'] = $this->input->post->zip;
+		$orderArray['fields']['zip']['label'] = $this->_("ZIP");
+		$orderArray['fields']['city']['value'] = $this->input->post->city;
+		$orderArray['fields']['city']['label'] = $this->_("City");
+		$orderArray['fields']['country']['value'] = $this->input->post->country;
+		$orderArray['fields']['country']['label'] = $this->_("Country");
+		$orderArray['paymentmethod']['value'] = $this->input->post->paymentmethod;
+		$orderArray['paymentmethod']['label'] = $this->_("Payment method");
+		
+		if ($validate) {
+			foreach($orderArray['fields'] as $key => $field) {
+				
+				$orderArray['fields'][$key]['value'] = $this->sanitizer->text($field['value']);
+				
+				$required = $key . 'Required';
+				if ($this->$required && $orderArray['fields'][$key]['value'] == '') {
+					$orderArray['valid'] = false;
+					$orderArray['fields'][$key]['error'] = $this->_("This is a required field");
+				}
+			}
+			$this->session->set('orderArray', $orderArray);
+		}
+		
+		// This makes sure that there is always at least empty values on session
+		if (!isset($this->session->orderArray['valid'])) $this->session->set('orderArray', $orderArray);
+		
+		return $orderArray['valid'];
+		
+	}
+	
 	public function createOrder()
 	{
-		$fullname = $this->input->post->fullname;
-		$address = $this->input->post->address;
-		$email = $this->input->post->email;
-		$paymentmethod = $this->input->post->paymentmethod;
-		$ordername = $this->sanitizer->pageName($fullname) . time();
+		if ($this->session->orderArray['valid'] == FALSE) throw new WireException("Non-valid order got through.");
+		
+		$fields = $this->session->orderArray['fields'];
+		$fields['paymentmethod']['value'] = $this->session->orderArray['paymentmethod']['value'];
 		
 		$items = $this->modules->ShoppingCart->getCurrentCart();
 		
 		$order = new Page();
 		$order->template = $this->templates->get('sc-order');
 		$order->parent = $this->pages->get("template=admin,name=orders");
-		$order->title = $this->_("Order: ") . $fullname;
-		$order->name = $ordername;
-		$order->sc_fullname = $fullname;
-		$order->email = $email;
-		$order->sc_shippingaddress = $address;
+		$order->title = $this->_("Order: ") . $fields['firstname']['value'] . ' ' . $fields['lastname']['value'];
+		$order->name = $this->sanitizer->pageName($fields['firstname']['value'] . $fields['lastname']['value']) . time();
+		$order->sc_fullname = $fields['firstname'] . ' ' . $fields['lastname']['value'];
+		$order->email = $fields['email']['value'];
+		$order->sc_shippingaddress = $fields['streetaddress']['value'];
 		$order->sc_price = $this->modules->ShoppingCart->getTotalSumFromItems($items);
 		$order->sc_customer = $this->user;
-		$order->sc_paymentmethod = $paymentmethod;
+		$order->sc_paymentmethod = $fields['paymentmethod']['value'];
 		$order->sc_session = session_id();
 		$order->addStatus(Page::statusUnpublished);
 		
@@ -173,6 +290,7 @@ class ShoppingCheckout extends WireData implements Module, ConfigurableModule
 			$p->save();
 		}
 		
+		$this->session->remove('orderArray');
 		$this->db->query("DELETE FROM ShoppingCart WHERE session_id = '" . session_id() . "'");
 	}
 	
@@ -185,19 +303,209 @@ class ShoppingCheckout extends WireData implements Module, ConfigurableModule
 
 		$data = array_merge(self::getDefaultData(), $data);
 		
+		$urls = $modules->get("InputfieldFieldset");
+		$urls->label = "Url segments";
+		$urls->set('collapsed', Inputfield::collapsedYes);
+		
+		$field = $modules->get("InputfieldText");
+		$field->name = "confirmationUrlSegment";
+		$field->label = "UrlSegment for confirmation step";
+		$field->description = "This is only shown in the url.";
+		$field->value = $data['confirmationUrlSegment']; 
+		$urls->add($field);
+		
 		$field = $modules->get("InputfieldText");
 		$field->name = "paymentUrlSegment";
 		$field->label = "UrlSegment for payment step";
 		$field->description = "This is only shown in the url.";
 		$field->value = $data['paymentUrlSegment']; 
-		$fields->add($field);
+		$urls->add($field);
 
 		$field = $modules->get("InputfieldText");
 		$field->name = "completedUrlSegment";
 		$field->label = "UrlSegment for completed step";
 		$field->description = "This is only shown in the url.";
 		$field->value = $data['completedUrlSegment']; 
-		$fields->add($field);
+		$urls->add($field);
+		
+		$fields->add($urls);
+		
+		
+		$customer = $modules->get("InputfieldFieldset");
+		$customer->label = "Customer fields";
+		
+		
+		$firstname = $modules->get("InputfieldFieldset");
+		$firstname->label = "First name";
+		$firstname->set('collapsed', Inputfield::collapsedYes);
+				
+		$field = $modules->get("InputfieldCheckbox");
+		$field->name = "firstnameVisible";
+		$field->label = "Use this field?";
+		$field->value = 1; // providing a "checked" value for the checkbox is necessary
+		$field->attr('checked', empty($data['firstnameVisible']) ? '' : 'checked');
+		$firstname->add($field);
+		
+		$field = $modules->get("InputfieldCheckbox");
+		$field->name = "firstnameRequired";
+		$field->label = "Required?";
+		$field->value = 1; // providing a "checked" value for the checkbox is necessary
+		$field->attr('checked', empty($data['firstnameRequired']) ? '' : 'checked');
+		$firstname->add($field);
+		
+		$customer->add($firstname);
+		
+		$lastname = $modules->get("InputfieldFieldset");
+		$lastname->label = "Last name";
+		$lastname->set('collapsed', Inputfield::collapsedYes);
+				
+		$field = $modules->get("InputfieldCheckbox");
+		$field->name = "lastnameVisible";
+		$field->label = "Use this field?";
+		$field->value = 1; // providing a "checked" value for the checkbox is necessary
+		$field->attr('checked', empty($data['lastnameVisible']) ? '' : 'checked');
+		$lastname->add($field);
+		
+		$field = $modules->get("InputfieldCheckbox");
+		$field->name = "lastnameRequired";
+		$field->label = "Required?";
+		$field->value = 1; // providing a "checked" value for the checkbox is necessary
+		$field->attr('checked', empty($data['lastnameRequired']) ? '' : 'checked');
+		$lastname->add($field);
+		
+		$customer->add($lastname);
+		
+		
+		$email = $modules->get("InputfieldFieldset");
+		$email->label = "Email";
+		$email->set('collapsed', Inputfield::collapsedYes);
+				
+		$field = $modules->get("InputfieldCheckbox");
+		$field->name = "emailVisible";
+		$field->label = "Use this field?";
+		$field->value = 1; // providing a "checked" value for the checkbox is necessary
+		$field->attr('checked', empty($data['lastnameVisible']) ? '' : 'checked');
+		$email->add($field);
+		
+		$field = $modules->get("InputfieldCheckbox");
+		$field->name = "emailRequired";
+		$field->label = "Required?";
+		$field->value = 1; // providing a "checked" value for the checkbox is necessary
+		$field->attr('checked', empty($data['emailRequired']) ? '' : 'checked');
+		$email->add($field);
+		
+		$customer->add($email);
+		
+		
+		$streetaddress = $modules->get("InputfieldFieldset");
+		$streetaddress->label = "Street address";
+		$streetaddress->set('collapsed', Inputfield::collapsedYes);
+				
+		$field = $modules->get("InputfieldCheckbox");
+		$field->name = "streetaddressVisible";
+		$field->label = "Use this field?";
+		$field->value = 1; // providing a "checked" value for the checkbox is necessary
+		$field->attr('checked', empty($data['streetaddressVisible']) ? '' : 'checked');
+		$streetaddress->add($field);
+		
+		$field = $modules->get("InputfieldCheckbox");
+		$field->name = "streetaddressRequired";
+		$field->label = "Required?";
+		$field->value = 1; // providing a "checked" value for the checkbox is necessary
+		$field->attr('checked', empty($data['streetaddressRequired']) ? '' : 'checked');
+		$streetaddress->add($field);
+		
+		$customer->add($streetaddress);
+		
+		
+		$zip = $modules->get("InputfieldFieldset");
+		$zip->label = "ZIP / Postal code";
+		$zip->set('collapsed', Inputfield::collapsedYes);
+				
+		$field = $modules->get("InputfieldCheckbox");
+		$field->name = "zipVisible";
+		$field->label = "Use this field?";
+		$field->value = 1; // providing a "checked" value for the checkbox is necessary
+		$field->attr('checked', empty($data['zipVisible']) ? '' : 'checked');
+		$zip->add($field);
+		
+		$field = $modules->get("InputfieldCheckbox");
+		$field->name = "zipRequired";
+		$field->label = "Required?";
+		$field->value = 1; // providing a "checked" value for the checkbox is necessary
+		$field->attr('checked', empty($data['zipRequired']) ? '' : 'checked');
+		$zip->add($field);
+		
+		$customer->add($zip);
+		
+		
+		$city = $modules->get("InputfieldFieldset");
+		$city->label = "City";
+		$city->set('collapsed', Inputfield::collapsedYes);
+				
+		$field = $modules->get("InputfieldCheckbox");
+		$field->name = "cityVisible";
+		$field->label = "Use this field?";
+		$field->value = 1; // providing a "checked" value for the checkbox is necessary
+		$field->attr('checked', empty($data['cityVisible']) ? '' : 'checked');
+		$city->add($field);
+		
+		$field = $modules->get("InputfieldCheckbox");
+		$field->name = "cityRequired";
+		$field->label = "Required?";
+		$field->value = 1; // providing a "checked" value for the checkbox is necessary
+		$field->attr('checked', empty($data['cityRequired']) ? '' : 'checked');
+		$city->add($field);
+		
+		$customer->add($city);
+		
+		
+		$country = $modules->get("InputfieldFieldset");
+		$country->label = "Country";
+		$country->set('collapsed', Inputfield::collapsedYes);
+				
+		$field = $modules->get("InputfieldCheckbox");
+		$field->name = "countryVisible";
+		$field->label = "Use this field?";
+		$field->value = 1; // providing a "checked" value for the checkbox is necessary
+		$field->attr('checked', empty($data['countryVisible']) ? '' : 'checked');
+		$country->add($field);
+		
+		$field = $modules->get("InputfieldCheckbox");
+		$field->name = "countryRequired";
+		$field->label = "Required?";
+		$field->value = 1; // providing a "checked" value for the checkbox is necessary
+		$field->attr('checked', empty($data['countryRequired']) ? '' : 'checked');
+		$country->add($field);
+		
+		$customer->add($country);
+		
+		
+		$information = $modules->get("InputfieldFieldset");
+		$information->label = "More information about my order";
+		$information->set('collapsed', Inputfield::collapsedYes);
+				
+		$field = $modules->get("InputfieldCheckbox");
+		$field->name = "informationVisible";
+		$field->label = "Use this field?";
+		$field->value = 1; // providing a "checked" value for the checkbox is necessary
+		$field->attr('checked', empty($data['informationVisible']) ? '' : 'checked');
+		$information->add($field);
+		
+		$field = $modules->get("InputfieldCheckbox");
+		$field->name = "informationRequired";
+		$field->label = "Required?";
+		$field->value = 1; // providing a "checked" value for the checkbox is necessary
+		$field->attr('checked', empty($data['informationRequired']) ? '' : 'checked');
+		$information->add($field);
+		
+		$customer->add($information);
+		
+		
+		
+		$fields->add($customer);
+		
+		
 
 		return $fields;
 	}

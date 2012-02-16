@@ -7,7 +7,7 @@ class ShoppingCart extends WireData implements Module
 	{
 		return array(
 			'title' => 'Shopping Cart',
-			'version' => 001,
+			'version' => 005,
 			'summary' => 'Simple shopping cart for PW',
 			'singular' => false,
 			'autoload' => true
@@ -121,7 +121,7 @@ class ShoppingCart extends WireData implements Module
 	 * @return string markup for cart
 	 *
 	 */
-	public function renderCart()
+	public function renderCart($viewOnly = false)
 	{
 		
 		$items = $this->getCurrentCart();
@@ -133,8 +133,13 @@ class ShoppingCart extends WireData implements Module
 		$total_sum = $this->getTotalSumFromItems($items);
 		
 		$out = "<h2>" . $this->_("Items in your cart:") . "</h2>";
-		$out .= "<form method='post' action='./'><table>";
-		$out .= "<tr><th>" . $this->_('Product') . "</th><th>" . $this->_('Quantity') . "</th><th>" . $this->_('Price') . "</th><th>" . $this->_('Remove?') . "</th></tr>";
+		if (!$viewOnly) $out .= "<form method='post' action='./'>";
+		$out .= "<table>";
+		$out .= "<tr><th>" . $this->_('Product') . "</th>";
+		$out .= "<th>" . $this->_('Quantity') . "</th>";
+		$out .= "<th>" . $this->_('Price') . "</th>";
+		if (!$viewOnly) $out .= "<th>" . $this->_('Remove?') . "</th>";
+		$out .= "</tr>";
 		
 		foreach ($items as $item) {			
 			// get product price from actual product page
@@ -143,18 +148,24 @@ class ShoppingCart extends WireData implements Module
 			
 			$out .= "<tr>";
 			$out .= "<td>{$product->title}</td>";
-			$out .= "<td><input data-price='" . $product->sc_price . "' name='items[{$product->id}]' type='number' size='2' value='" . (int) $item->qty . "'/></td>";
+			if (!$viewOnly)	{
+				$out .= "<td><input data-price='" . $product->sc_price . "' name='items[{$product->id}]' type='number' size='2' value='" . (int) $item->qty . "'/></td>";
+			} else {
+				$out .= "<td>" . (int) $item->qty . "</td>";
+			}
+			
 			$out .= "<td>{$total_price}</td>";
-			$out .= "<td><a class='remove' href='./?sc_remove=" . $product->id . "'>" . $this->_("Remove") . "</a></td>";
+			if (!$viewOnly) $out .= "<td><a class='remove' href='./?sc_remove=" . $product->id . "'>" . $this->_("Remove") . "</a></td>";
 			$out .= "</tr>";
 		}
 		
 		$out .= "<tr class='final'><td>" . $this->_("Total:") . "</td><td>&nbsp;</td><td id='total_sum'>$total_sum</td><td></td></tr>";
 		$out .= "</table>";
-		$out .= "<input type='submit' name='sc_update' value=' " . $this->_("Update Cart") . "' />";
-		if ($this->modules->isInstalled('ShoppingCheckout'))
-			$out .= "<input type='submit' name='sc_checkout' value=' " . $this->_("Continue to checkout") . "' />";
-		$out .= "</form>";
+		if (!$viewOnly) {
+			$out .= "<input type='submit' name='sc_update' value=' " . $this->_("Update Cart") . "' />";
+			if ($this->modules->isInstalled('ShoppingCheckout')) $out .= "<input type='submit' name='sc_checkout' value=' " . $this->_("Continue to checkout") . "' />";
+		}
+		if (!$viewOnly) $out .= "</form>";
 		
 		return $out;
 	}

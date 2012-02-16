@@ -6,7 +6,7 @@ class ShoppingOrdersManagement extends Process {
 		return array(
 			'title' => 'Orders Management',
 			'summary' => 'Manage Shop orders',
-			'version' => 100,
+			'version' => 002,
 			'permanent' => false,
 			'singular' => true,
 			'permission' => 'shop_orders',

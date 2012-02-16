@@ -20,8 +20,16 @@ class PaymentExample extends PaymentAbstract {
 	
 	/*
 	 *
-	 * returns nothing, should always do redirect to payment processor or if local
-	 * then to ../completed/
+	 * returns nothing. You should edit and save $order page. If payment was succesful,
+	 * then do $order->removeStatus(Page::statusUnpublished) and remember to save the order!
+	 *
+	 * If order was also paid, then do $order->sc_paid = time();
+	 *
+	 * If order was not paid, but it was succesful (like invoice, money on delivery etc)
+	 * then just publish the order, but do not set sc_paid value.
+	 *
+	 * After you have manipulated the order, then just to redirect to $this->completedUrl
+	 *
 	 *
 	 * @param Page $order keeps the page object for the order
 	 *
@@ -29,10 +37,8 @@ class PaymentExample extends PaymentAbstract {
     public function processPayment(Page $order) {
 		if ($this->input->get->ok) {
 			
-			
-			
 			if ($this->input->get->ok == 'fail') {
-				// We don't remove statusUnpublished and it means that payment failed
+				// We don't remove statusUnpublished. That means failed or cancelled payment
 				$this->session->redirect($this->completedUrl);
 			}
 			
@@ -50,8 +56,7 @@ class PaymentExample extends PaymentAbstract {
 		}
 		
 		//  No need to really do anything like this on payment module, this is here just for educational purposes):
-		$out = "<p>Please review your order</p>";
-		$out .= "<h2>Products ordered</h2>";
+		$out = "<h2>Products ordered</h2>";
 		
 		$out .=	"<ul>";	
 		// Products
@@ -79,7 +84,7 @@ class PaymentExample extends PaymentAbstract {
 		$out .= "<h3>How do we proceed?</h3>";
 		
 		$out .= "<ul><li><a href='./?ok=invoice'>Send me an invoice</a>";
-		$out .= "<li><a href='./?ok=paid'>I have already paid this</a>";
+		$out .= "<li><a href='./?ok=paid'>I pay this with Magic Money&trade;</a>";
 		$out .= "<li><a href='./?ok=fail'>I want to fail this payment</a>";
 		
 		return $out;
