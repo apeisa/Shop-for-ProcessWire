@@ -10,8 +10,14 @@
 
 table.items {
 	padding-bottom: 30px;
-	margin-bottom: 30px;
+	margin-bottom: 10px;
 	border-bottom: 1px solid #ccc;
+}
+
+.edit-order {
+	clear: both;
+	float: right;
+	margin-bottom: 20px;
 }
 
 #paid_container {
@@ -20,6 +26,7 @@ table.items {
 	float: left;
 	border-right: 1px dotted #ccc;
 	margin-bottom: 30px;
+	clear: both;
 }
 
 #processed_container {

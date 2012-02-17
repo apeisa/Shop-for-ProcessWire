@@ -627,7 +627,8 @@ class ShoppingCheckout extends WireData implements Module, ConfigurableModule
 		$oifg->add($f);
 		$oifg->save();
 		
-		if (!$this->fields->get('sc_qty')) {
+		$f = $this->fields->get('sc_qty');
+		if (!$f) {
 			$f = new Field();
 			$f->type = $this->modules->get("FieldtypeInteger");
 			$f->name = 'sc_qty';

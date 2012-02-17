@@ -155,6 +155,9 @@ class ShoppingOrdersManagement extends Process {
 
 
 		$out .= $table->render();
+		
+		$out .= "<a class='edit-order' href='". $this->pages->get($this->config->adminRootPageID)->url ."page/edit/?id=$order->id'>". $this->_("Edit this order") ."</a>";
+		
 
 		if($order->sc_paid == 0) {
 			$out .= "<div id='paid_container' class='block'><h3>". $this->_("Customer hasn't paid this order yet") ."</h3>";
