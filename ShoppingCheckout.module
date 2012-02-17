@@ -138,10 +138,11 @@ class ShoppingCheckout extends WireData implements Module, ConfigurableModule
 	 */
 	public function renderCheckout()
 	{
-		$data = $this->modules->getModuleConfigData('ShoppingCheckout');
-		foreach($data as $key => $value) {
-		   $this->$key = $value;
-	    }		
+	//	$data = $this->modules->getModuleConfigData('ShoppingCheckout');
+	//	foreach($data as $key => $value) {
+	//	   $this->$key = $value;
+	//	   echo $key . ": ". $value . "<br>";
+	//    }
 		
 		if(!$this->input->urlSegment1) {
 			$out = $this->renderInformation();
@@ -292,8 +293,13 @@ class ShoppingCheckout extends WireData implements Module, ConfigurableModule
 				$class  = ($this->$reqKey) ? 'required' : '';
 				$class .= (isset($field['error'])) ? ' error' : '';
 				
-				$out .= "<div class='$class'><label for='$key'>". $field['label'] .":</label> ";
-				if (isset($field['error'])) $out .= "<p class='errormsg'>". $field['error'] ."</p>";
+				$out .= "<p class='$key $class'>";
+				$out .= "<label for='$key'>";
+				$out .= $field['label'] . ":";
+				if ($this->$reqKey) $out .= "<span class='reqstar'>*</span>";
+				$out .= "</label>";
+				if (isset($field['error'])) $out .= "<span class='errormsg'>". $field['error'] ."</span>";
+				
 				if (!$viewOnly) {
 					switch($field['type']) {
 						case "textarea":
@@ -307,7 +313,7 @@ class ShoppingCheckout extends WireData implements Module, ConfigurableModule
 					$out .= "<span>". $field['value'] ."</span>";
 					$out .= "<input type='hidden' name='$key' value='". $field['value'] ."' />";
 				}
-				$out .= "</div>";
+				$out .= "</p>";
 			}
 		}
 		
@@ -327,6 +333,7 @@ class ShoppingCheckout extends WireData implements Module, ConfigurableModule
 	 */
 	public function validateInformation($validate = true) {
 		
+		
 		$orderArray = Array();
 		$orderArray['valid'] = true;
 		
@@ -337,15 +344,30 @@ class ShoppingCheckout extends WireData implements Module, ConfigurableModule
 		$fields = $defaultData['fields'];
 		
 		foreach($fields as $key => $field) {
-			// If not visible field, remove from array
-			if (!$this->$key) continue;
 			
+			// If not visible field, don't add to array
+			if ($this->$key != 1) continue;
+			
+			// Set default labels
 			$orderArray['fields'][$key]['label'] = $field['label'];
+			
+			// Set the form item type and default to input
 			if (isset($field['type'])) $orderArray['fields'][$key]['type'] = $field['type'];
 			else $orderArray['fields'][$key]['type'] = 'text';
 			
+			// Set the custom values for custom field labels (can be set from settings)
+			if ($key == 'custom1' || $key == 'custom2') {
+				$customKey = $key . 'CustomLabel';
+				$orderArray['fields'][$key]['label'] = $this->$customKey;
+				
+				$customTextareaKey = $key . 'CustomTextarea';
+				if ($this->$customTextareaKey) $orderArray['fields'][$key]['type'] = 'textarea';
+			}
+			
+			// Set empty value for every field
 			$orderArray['fields'][$key]['value'] = '';
 			
+			// And if we have value saved on session, update it
 			if(isset($this->session->orderArray['fields'][$key])) {
 				$orderArray['fields'][$key]['value'] = $this->session->orderArray['fields'][$key]['value'];
 			}
@@ -360,8 +382,6 @@ class ShoppingCheckout extends WireData implements Module, ConfigurableModule
 				$field['value'] = $this->input->post->$key;
 				
 				$orderArray['fields'][$key]['value'] = $this->sanitizer->text($field['value']);
-				
-				echo $orderArray['fields'][$key]['value'];
 				
 				if ($this->$reqKey && $orderArray['fields'][$key]['value'] == '') {
 					$orderArray['valid'] = false;
@@ -445,70 +465,101 @@ class ShoppingCheckout extends WireData implements Module, ConfigurableModule
 		return ($order->id) ? true : false;
 	}
 	
-	static public function getModuleConfigInputfields(array $data) {
+	static public function getModuleConfigInputfields(Array $data) {
 		// this is a container for fields, basically like a fieldset
 		$fields = new InputfieldWrapper();
 
 		// since this is a static function, we can't use $this->modules, so get them from the global wire() function
 		$modules = wire('modules');
 
-		$data = array_merge(self::getDefaultData(), $data);
+		//$data = array_merge(self::getDefaultData(), $data);
 				
-		//$urls = $modules->get("InputfieldFieldset");
-		//$urls->label = "Url segments";
-		//$urls->set('collapsed', Inputfield::collapsedYes);
+		$urls = $modules->get("InputfieldFieldset");
+		$urls->label = "Url segments";
+		$urls->set('collapsed', Inputfield::collapsedYes);
 		
 		$field = $modules->get("InputfieldText");
 		$field->attr('name', 'confirmationUrlSegment');
 		$field->attr('value', $data['confirmationUrlSegment']); 		
 		$field->label = "UrlSegment for confirmation step";
 		$field->description = "This is only shown in the url. Default: confirmation";		
-		//$urls->add($field);
-		$fields->add($field);
+		$urls->add($field);
+		//$fields->add($field);
 		
 		$field = $modules->get("InputfieldText");
 		$field->attr('name', 'paymentUrlSegment');
 		$field->attr('value', $data['paymentUrlSegment']); 		
 		$field->label = "UrlSegment for payment step";
 		$field->description = "This is only shown in the url. Default: payment";
-		//$urls->add($field);
-		$fields->add($field);
+		$urls->add($field);
+		//$fields->add($field);
 
 		$field = $modules->get("InputfieldText");
 		$field->attr('name', 'completedUrlSegment');
 		$field->attr('value', $data['completedUrlSegment']); 		
 		$field->label = "UrlSegment for completed step";
 		$field->description = "This is only shown in the url. Default: completed";
-		//$urls->add($field);
-		$fields->add($field);
+		$urls->add($field);
+		//$fields->add($field);
 		
-		//$fields->add($urls);
+		$fields->add($urls);
 		
 		$customer = $modules->get("InputfieldFieldset");
-		$customer->label = "Customer fields";
+		$customer->label = "Information asked from customers";
+		$customer->set('collapsed', Inputfield::collapsedYes);
 		
-		$informationFields = $data['fields'];
+		$defaults = self::getDefaultData();
+		$informationFields = $defaults['fields'];
 		
 		// This creates visible / required settings for each information field
 		foreach($informationFields as $key => $field) {
 			$fs = $modules->get("InputfieldFieldset");
 			$fs->label = $field['label'];
-			$fs->set('collapsed', Inputfield::collapsedYes);
-			
+			//$fs->set('collapsed', Inputfield::collapsedBlank);
+			//
+			//if (isset($data[$key])) {
+			//	$checked = $data[$key];
+			//} else {
+			//	$checked = $informationFields[$key]['defaults']['visible'];
+			//}
+			//
 			$f = $modules->get("InputfieldCheckbox");
 			$f->name = $key;
-			$f->label = "Use this field?";
+			$f->label = "Use ". $field['label'] ." field?";
 			$f->value = 1;
-			$f->attr('checked', empty($informationFields[$key]['defaults']['visible']) ? '' : 'checked');
+			$f->attr('checked', empty($data[$key]) ? '' : 'checked');
+			$f->set('collapsed', Inputfield::collapsedBlank);
 			$fs->add($f);
 			
+
 			$f = $modules->get("InputfieldCheckbox");
 			$name = $key . "Required";
 			$f->name = $name;
-			$f->label = "Required?";
+			$f->label = "Is ". $field['label'] ." required?";
 			$f->value = 1;
-			$f->attr('checked', empty($informationFields[$key]['defaults']['required']) ? '' : 'checked');
+			$f->attr('checked', empty($data[$name]) ? '' : 'checked');
+			$f->set('collapsed', Inputfield::collapsedBlank);
 			$fs->add($f);
+			
+			if ($key == 'custom1' || $key == 'custom2') {
+				$f = $modules->get("InputfieldText");
+				$name = $key . "CustomLabel";
+				$f->name = $name;
+				$f->label = "Label for this field";
+				$f->attr('value', $data[$name]);
+				$f->set('collapsed', Inputfield::collapsedBlank);
+				$fs->add($f);
+				
+				$f = $modules->get("InputfieldCheckbox");
+				$name = $key . "CustomTextarea";
+				$f->name = $name;
+				$f->label = "Use textarea instead of regular input?";
+				$f->value = 1;
+				$f->attr('checked', empty($data[$name]) ? '' : 'checked');
+				$f->set('collapsed', Inputfield::collapsedBlank);
+				$fs->add($f);
+			}
+			
 			
 			$customer->add($fs);
 		}
