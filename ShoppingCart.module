@@ -269,6 +269,14 @@ class ShoppingCart extends WireData implements Module
 			$f->save();
 		}
 		
+		if (!$this->fields->get('sc_qty')) {
+			$f = new Field();
+			$f->type = $this->modules->get("FieldtypeInteger");
+			$f->name = 'sc_qty';
+			$f->label = 'Quantity';
+			$f->save();
+		}
+		
 		$sql = <<< _END
 
 		CREATE TABLE {$this->className} (

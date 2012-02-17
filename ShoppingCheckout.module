@@ -7,12 +7,11 @@ class ShoppingCheckout extends WireData implements Module, ConfigurableModule
 		return array(
 			'title' => 'Shopping Checkout',
 			'version' => 001,
-			'summary' => 'Handles checkout process for PW Shop',
+			'summary' => 'Handles checkout process, order saving etc. Main module for PW Shop',
 			'singular' => false,
 			'autoload' => false,
 			'requires' => array(
-				"ShoppingCart",
-				"ShoppingOrdersManagement"
+				"ShoppingCart"
 			)
 		);
 	}
@@ -73,7 +72,8 @@ class ShoppingCheckout extends WireData implements Module, ConfigurableModule
 				),
 				'greetings' => array(
 						'label'		=> __('Details about my order'),
-						'defaults'	=> $visible
+						'defaults'	=> $visible,
+						'type'		=> 'textarea'
 				),
 				'custom1' => array(
 						'label'		=> __('Custom field #1'),
@@ -223,11 +223,14 @@ class ShoppingCheckout extends WireData implements Module, ConfigurableModule
 			$this->session->redirect("../{$this->paymentUrlSegment}/");
 		}
 		
+		$paymentmethod = $this->modules->get($this->session->orderArray['paymentmethod']['value']);
+		$paymentmethodInfo = $paymentmethod->getModuleInfo();
+		
 		$out  = $this->modules->ShoppingCart->renderCart(true);
 		$out .= "<form action='./' method='post'>";
 		$out .= $this->renderInformationFormItems(true);
 		$out .= "<input type='hidden' name='paymentmethod' value='". $this->session->orderArray['paymentmethod']['value'] ."' />";
-		$out .= "<input type='submit' name='submit' value='". $this->_("Pay this order") ."' />";
+		$out .= "<input type='submit' name='submit' value='". $this->_("Pay this order using") . " " . $paymentmethodInfo['title'] ."' />";
 		$out .= "</form>";
 		$out .= "<a href='../'>". $this->_("Go back to edit your information") ."</a>";
 		
@@ -286,7 +289,6 @@ class ShoppingCheckout extends WireData implements Module, ConfigurableModule
 			$reqKey = $key . 'Required';
 			
 			if ($this->$key) {
-				if (!isset($field['type'])) $field['type'] = 'text';
 				$class  = ($this->$reqKey) ? 'required' : '';
 				$class .= (isset($field['error'])) ? ' error' : '';
 				
@@ -339,6 +341,9 @@ class ShoppingCheckout extends WireData implements Module, ConfigurableModule
 			if (!$this->$key) continue;
 			
 			$orderArray['fields'][$key]['label'] = $field['label'];
+			if (isset($field['type'])) $orderArray['fields'][$key]['type'] = $field['type'];
+			else $orderArray['fields'][$key]['type'] = 'text';
+			
 			$orderArray['fields'][$key]['value'] = '';
 			
 			if(isset($this->session->orderArray['fields'][$key])) {
@@ -514,11 +519,355 @@ class ShoppingCheckout extends WireData implements Module, ConfigurableModule
 		return $fields;
 	}
 	
-	public function install()
-	{
+	public function install() {
+		$admin = $this->templates->get("admin");
+		
+		$list = $this->modules->get('ProcessList');
+		
+		$shop = new Page();
+		$shop->template = $admin;
+		$shop->parent = $this->pages->get($this->config->adminRootPageID);
+		$shop->title = 'Shop';
+		$shop->name = 'shop';
+		$shop->addStatus(Page::statusHidden);
+		//$shop->process = $list;
+		$shop->save();
+		
+		
+		
+		if ($shop->id) {
+			$orders = new Page();
+			$orders->template = $this->templates->get("admin");
+			$orders->parent = $shop;
+			$orders->title = 'Orders';
+			//$orders->name = 'orders';
+			$orders->process = $this;
+			$orders->save();
+		}
+		
+		//shop/settings/
+		$settings = new Page();
+		$settings->template = $admin;
+		$settings->parent = $shop;
+		$settings->title = 'Shop settings';
+		$settings->name = 'settings';
+		$settings->save();
+		
+		//shop/settings/statuses/
+		$statuses = new Page();
+		$statuses->template = $admin;
+		$statuses->parent = $settings;
+		$statuses->title = 'Order statuses';
+		$statuses->name = 'statuses';
+		$statuses->save();
+		
+		//shop/settings/statuses/completed/
+		$p = new Page();
+		$p->template = $admin;
+		$p->parent = $statuses;
+		$p->title = 'Completed';
+		$p->name = 'completed';
+		$p->save();
+		
+		//shop/settings/statuses/in-progress/
+		$p = new Page();
+		$p->template = $admin;
+		$p->parent = $statuses;
+		$p->title = 'In Progress';
+		$p->name = 'in-progress';
+		$p->save();
+		
+		//shop/settings/statuses/cancelled/
+		$p = new Page();
+		$p->template = $admin;
+		$p->parent = $statuses;
+		$p->title = 'Cancelled';
+		$p->name = 'cancelled';
+		$p->save();
+		
+		
+		
+		$oifg = new Fieldgroup();
+		$oifg->name = 'sc-order-item';
+		$oifg->add($this->fields->get('title'));
+		$oifg->save();
+
+		$oi = new Template();
+		$oi->name = 'sc-order-item';
+		$oi->fieldgroup = $oifg;
+		$oi->pageLabelField = 'title';
+		$oi->noChildren = 1;
+		$oi = $oi->save();
+		
+		$fg = new Fieldgroup();
+		$fg->name = 'sc-order';
+		$fg->add($this->fields->get('title'));
+		$fg->save();
+
+		$t = new Template();
+		$t->name = 'sc-order';
+		$t->fieldgroup = $fg;
+		$t->pageLabelField = 'title';
+		$t->parentTemplates = array($admin->id);
+		$t->childTemplates = array($oi->id);
+		$t = $t->save();
+		
+		$f = $this->fields->get('sc_price');
+		if (!$f) {
+			$f = new Field();
+			$f->type = $this->modules->get("FieldtypeFloat");
+			$f->name = 'sc_price';
+			$f->precision = 2;
+			$f->label = 'Price of the product';
+			$f->save();
+		}
+		
+		$fg->add($f);
+		$fg->save();
+		$oifg->add($f);
+		$oifg->save();
+		
+		if (!$this->fields->get('sc_qty')) {
+			$f = new Field();
+			$f->type = $this->modules->get("FieldtypeInteger");
+			$f->name = 'sc_qty';
+			$f->label = 'Quantity';
+			$f->save();
+		}
+		$oifg->add($f);
+		$oifg->save();
+		
+		if (!$this->fields->get('sc_product')) {
+			$f = new Field();
+			$f->type = $this->modules->get("FieldtypePage");
+			$f->name = 'sc_product';
+			$f->label = 'Product';
+			$f->inputfield = 'InputfieldPageListSelect';
+			$f->save();
+		}
+		$oifg->add($f);
+		$oifg->save();
+		
+		if (!$this->fields->get('sc_customer')) {
+			$f = new Field();
+			$f->type = $this->modules->get("FieldtypePage");
+			$f->name = 'sc_customer';
+			$f->label = 'Customer';
+			$f->inputfield = 'InputfieldPageListSelect';
+			$f->derefAsPage = FieldtypePage::derefAsPageOrFalse;
+			$f->parent_id = $this->config->usersPageID;
+			$f->template_id = $this->config->userTemplateID;
+			$f->save();
+		}
+		$fg->add($f);
+		$fg->save();
+		
+		if (!$this->fields->get('sc_status')) {
+			$f = new Field();
+			$f->type = $this->modules->get("FieldtypePage");
+			$f->name = 'sc_status';
+			$f->label = 'Order Status';
+			$f->inputfield = 'InputfieldSelect';
+			$f->derefAsPage = FieldtypePage::derefAsPageOrFalse;
+			$f->parent_id = $statuses->id;
+			$f->save();
+		}
+		$fg->add($f);
+		$fg->save();
+		
+		if (!$this->fields->get('sc_firstname')) {
+			$f = new Field();
+			$f->type = $this->modules->get("FieldtypeText");
+			$f->name = 'sc_firstname';
+			$f->label = 'First name';
+			$f->save();
+		}
+		$fg->add($f);
+		$fg->save();
+		
+		if (!$this->fields->get('sc_lastname')) {
+			$f = new Field();
+			$f->type = $this->modules->get("FieldtypeText");
+			$f->name = 'sc_lastname';
+			$f->label = 'Last name';
+			$f->save();
+		}
+		$fg->add($f);
+		$fg->save();
+		
+		if (!$this->fields->get('sc_streetaddress')) {
+			$f = new Field();
+			$f->type = $this->modules->get("FieldtypeText");
+			$f->name = 'sc_streetaddress';
+			$f->label = 'Street address';
+			$f->save();
+		}
+		$fg->add($f);
+		$fg->save();
+		
+		if (!$this->fields->get('sc_zip')) {
+			$f = new Field();
+			$f->type = $this->modules->get("FieldtypeText");
+			$f->name = 'sc_zip';
+			$f->label = 'ZIP / Postal code';
+			$f->save();
+		}
+		$fg->add($f);
+		$fg->save();
+		
+		if (!$this->fields->get('sc_city')) {
+			$f = new Field();
+			$f->type = $this->modules->get("FieldtypeText");
+			$f->name = 'sc_city';
+			$f->label = 'City';
+			$f->save();
+		}
+		$fg->add($f);
+		$fg->save();
+		
+		if (!$this->fields->get('sc_country')) {
+			$f = new Field();
+			$f->type = $this->modules->get("FieldtypeText");
+			$f->name = 'sc_country';
+			$f->label = 'Country';
+			$f->save();
+		}
+		$fg->add($f);
+		$fg->save();
+		
+		if (!$this->fields->get('sc_greetings')) {
+			$f = new Field();
+			$f->type = $this->modules->get("FieldtypeTextarea");
+			$f->name = 'sc_greetings';
+			$f->label = 'Greetings for shop';
+			$f->save();
+		}
+		$fg->add($f);
+		$fg->save();
+		
+		if (!$this->fields->get('sc_custom1')) {
+			$f = new Field();
+			$f->type = $this->modules->get("FieldtypeTextarea");
+			$f->name = 'sc_custom1';
+			$f->label = 'Custom field #1';
+			$f->save();
+		}
+		$fg->add($f);
+		$fg->save();
+		
+		if (!$this->fields->get('sc_custom2')) {
+			$f = new Field();
+			$f->type = $this->modules->get("FieldtypeTextarea");
+			$f->name = 'sc_custom2';
+			$f->label = 'Custom field #2';
+			$f->save();
+		}
+		$fg->add($f);
+		$fg->save();
+		
+		if (!$this->fields->get('sc_paid')) {
+			$f = new Field();
+			$f->type = $this->modules->get("FieldtypeDatetime");
+			$f->name = 'sc_paid';
+			$f->label = 'Paid';
+			$f->dateOutputFormat = $this->config->dateFormat;
+			$f->dateInputFormat = $this->config->dateFormat;
+			$f->save();
+		}
+		$fg->add($f);
+		$fg->save();
+		
+		if (!$this->fields->get('sc_processed')) {
+			$f = new Field();
+			$f->type = $this->modules->get("FieldtypeDatetime");
+			$f->name = 'sc_processed';
+			$f->label = 'Processed';
+			$f->dateOutputFormat = $this->config->dateFormat;
+			$f->dateInputFormat = $this->config->dateFormat;
+			$f->save();
+		}
+		$fg->add($f);
+		$fg->save();
+		
+		if (!$this->fields->get('sc_paymentmethod')) {
+			$f = new Field();
+			$f->type = $this->modules->get("FieldtypeText");
+			$f->name = 'sc_paymentmethod';
+			$f->label = 'Payment Method used';
+			$f->save();
+		}
+		$fg->add($f);
+		$fg->save();
+		
+		if (!$this->fields->get('sc_session')) {
+			$f = new Field();
+			$f->type = $this->modules->get("FieldtypeText");
+			$f->name = 'sc_session';
+			$f->label = 'Session ID';
+			$f->save();
+		}
+		$fg->add($f);
+		$fg->save();
+		
+		$f = $this->fields->get('email');
+		$fg->add($f);
+		$fg->save();
+		
+		// Only allowed parent template for sc-order-item is sc-order
+		$oi->parentTemplates = array($t->id);
+		$oi->save();
+
+
+		$fg = new Fieldgroup();
+		$fg->name = 'sc-checkout';
+		$fg->add($this->fields->get('title'));
+		$fg->save();
+
+		$t = new Template();
+		$t->name = 'sc-checkout';
+		$t->fieldgroup = $fg;
+		$t->urlSegments = 1;
+		$t->pageLabelField = 'title';
+		$t = $t->save();
+
+		$p = new Page();
+		$p->template = $t;
+		$p->parent = $this->pages->get(1);
+		$p->title = 'Checkout';
+		$p->name = 'checkout';
+		$p->addStatus(Page::statusHidden);
+		$p->save();
+		
 	}
 	
-	public function uninstall()
-	{
+	
+	
+	public function uninstall() {
+		$p = $this->pages->get('template=sc-checkout, include=all');
+		if ($p->id) $p->delete();
+		
+		$p = $this->pages->get('template=admin, name=shop, include=all');
+		if ($p->id) $this->pages->delete($p, true); // Recursive delete
+
+		if ($this->templates->get('sc-checkout')) {
+			$this->templates->delete($this->templates->get('sc-checkout'));
+			$this->fieldgroups->delete($this->fieldgroups->get('sc-checkout'));
+		}
+		
+		if ($this->templates->get('sc-order')) {
+			$this->templates->delete($this->templates->get('sc-order'));
+			$this->fieldgroups->delete($this->fieldgroups->get('sc-order'));	
+		}
+		
+		if ($this->templates->get('sc-order-item')) {
+			$this->templates->delete($this->templates->get('sc-order-item'));
+			$this->fieldgroups->delete($this->fieldgroups->get('sc-order-item'));
+		}
+		
+		// Remove all other sc_fields but sc_price
+		$scFields = $this->fields->find("name^=sc_,name!=sc_price");
+		foreach($scFields as $f) {
+			$this->fields->delete($f);
+		}
 	}
 }
