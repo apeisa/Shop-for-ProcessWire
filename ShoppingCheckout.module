@@ -268,9 +268,21 @@ class ShoppingCheckout extends WireData implements Module, ConfigurableModule
 			$out = "Payment cancelled or failed!";
 			$out .= "<a href='../{$this->paymentUrlSegment}/'>Try again?</a>";
 			return $out;
-		} else {
+		}
+		// Payment ok, order is done!
+		else {			
+			$this->calculateNewStock($order);
 			$this->session->remove('orderId');			
 			return "Thank you: $order->title !";			
+		}
+	}
+	
+	public function calculateNewStock(Page $order) {
+		foreach($order->children as $orderitem) {
+			$product = $orderitem->sc_product;
+			$product->setOutputFormatting(false);
+			$product->sc_qty = ($product->sc_qty - $orderitem->sc_qty); // TODO: We need to make sure that negative integers are allowed. Currently not..
+			$product->save();
 		}
 	}
 	/*
@@ -473,7 +485,16 @@ class ShoppingCheckout extends WireData implements Module, ConfigurableModule
 		$modules = wire('modules');
 
 		//$data = array_merge(self::getDefaultData(), $data);
+		
+		$defaults = self::getDefaultData();
+		
+		if(empty($data['confirmationUrlSegment'])) $data['confirmationUrlSegment'] = $defaults['confirmationUrlSegment'];
+		if(empty($data['paymentUrlSegment'])) $data['paymentUrlSegment'] = $defaults['paymentUrlSegment'];
+		if(empty($data['completedUrlSegment'])) $data['completedUrlSegment'] = $defaults['completedUrlSegment'];
+		if(empty($data['custom1CustomLabel'])) $data['custom1CustomLabel'] = $defaults['fields']['custom1']['label'];
+		if(empty($data['custom2CustomLabel'])) $data['custom2CustomLabel'] = $defaults['fields']['custom2']['label'];
 				
+		
 		$urls = $modules->get("InputfieldFieldset");
 		$urls->label = "Url segments";
 		$urls->set('collapsed', Inputfield::collapsedYes);
@@ -508,7 +529,6 @@ class ShoppingCheckout extends WireData implements Module, ConfigurableModule
 		$customer->label = "Information asked from customers";
 		$customer->set('collapsed', Inputfield::collapsedYes);
 		
-		$defaults = self::getDefaultData();
 		$informationFields = $defaults['fields'];
 		
 		// This creates visible / required settings for each information field
@@ -694,6 +714,7 @@ class ShoppingCheckout extends WireData implements Module, ConfigurableModule
 			$f->type = $this->modules->get("FieldtypePage");
 			$f->name = 'sc_product';
 			$f->label = 'Product';
+			$f->derefAsPage = FieldtypePage::derefAsPageOrNullPage;
 			$f->inputfield = 'InputfieldPageListSelect';
 			$f->save();
 		}
@@ -917,7 +938,7 @@ class ShoppingCheckout extends WireData implements Module, ConfigurableModule
 		}
 		
 		// Remove all other sc_fields but sc_price
-		$scFields = $this->fields->find("name^=sc_,name!=sc_price");
+		$scFields = $this->fields->find("name^=sc_,name!=sc_price,name!=sc_qty");
 		foreach($scFields as $f) {
 			$this->fields->delete($f);
 		}

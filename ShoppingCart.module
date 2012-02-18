@@ -1,7 +1,7 @@
 
 <?php
 
-class ShoppingCart extends WireData implements Module
+class ShoppingCart extends WireData implements Module, ConfigurableModule
 {
 	public static function getModuleInfo()
 	{
@@ -29,8 +29,9 @@ class ShoppingCart extends WireData implements Module
 		}
 		
 		if ($this->input->get->sc_remove) {
-			$product_id = (int) $this->input->get->remove;
-			$this->addProductToCart($this->pages->get($product_id), 0);
+			$product_id = (int) $this->input->get->sc_remove;
+			$product = $this->pages->get($product_id);
+			$this->addProductToCart($product, 0);
 			$this->session->redirect("./");
 		}
 		
@@ -43,6 +44,7 @@ class ShoppingCart extends WireData implements Module
 				$this->session->redirect("./");
 		}
 	}
+	
 	
 	/**
 	 * Returns the default markup for "Add to cart form"
@@ -57,15 +59,22 @@ class ShoppingCart extends WireData implements Module
 		if (!(is_numeric($product->sc_price)) || $product->sc_price <= 0)
 			return false;
 		
+		$data = $this->modules->getModuleConfigData('ShoppingCart');
+		if(!$data['allowNegativeStock'] && $product->sc_qty < 1) {
+			return $this->_("Sorry, we are out of stock.");
+		}
+		
+		
 		$out = "<form method='post' action='$postUrl'>";
 		$out .= "<input type='hidden' value='{$product->id}' name='sc_product_id' />";
 		$out .= "<input type='number' name='sc_qty' value='1'/>";
 		$out .= "<input type='submit' value='" . $this->_("Add to cart") . "' />";
 		$out .= "</form>";
 		
+		
+		
 		return $out;
 	}
-	
 	
 	/**
 	 * Returns true|false depending if product was added succesfully to the cart
@@ -77,11 +86,18 @@ class ShoppingCart extends WireData implements Module
 	 */
 	public function addProductToCart(Page $product, $qty = 1)
 	{
-		$items = $this->getCurrentCart();
 		$qty   = (int) $qty;
 		
 		if ($qty < 0)
 			return false;
+		
+		if (!$this->checkStock($product, $qty)) {
+			$errormsg = sprintf($this->_n("Sorry, we have only %d item left. Try again, please.", "Sorry, we have only %d items left. Try again, please.", $product->sc_qty), $product->sc_qty);
+			$this->session->error($errormsg);
+			return false;
+		}
+		
+		$items = $this->getCurrentCart();
 		
 		// There is not a single product available
 		if (count($items) == 0) {
@@ -90,16 +106,26 @@ class ShoppingCart extends WireData implements Module
 		} else {
 			$product_found = false;
 			foreach ($items as $key => $item) {
+				
+				// There is already this product on cart
 				if ($item->product_id === $product->id) {
-					$item->qty = $item->qty + $qty;
+					
+					// We'll check if we have enough stock for this new quantity
+					$newQty = $item->qty + $qty;
+					$newQty = $this->checkStockAndReturnMaxQty($product, $newQty);
+					$item->qty = $newQty;
+					
+					// If zero qty added, remove from basket
 					if ($qty === 0) {
 						unset($items[$key]);
 						$items = array_values($items);
 					}
+					
 					$product_found = true;
 					break;
 				}
 			}
+
 			if (!$product_found) {
 				if ($qty > 0)
 					$items[] = $this->_newItem($product->id, $qty);
@@ -112,6 +138,27 @@ class ShoppingCart extends WireData implements Module
 		// Update cart to db or insert new row if there isn't
 		$update = $this->db->query("INSERT INTO {$this->className} SET items = '$items', total_sum = $total_sum, session_id = '" . session_id() . "' ON DUPLICATE KEY UPDATE items = '$items', total_sum = $total_sum");
 		
+		return true;
+	}
+	
+	/*
+	 * Returns true if it is ok to add product to basket
+	 *
+	 * @param Page $product
+	 * @param Integer $qty
+	 *
+	 */
+	public function checkStock(Page $product, $qty) {
+		$qty = (int) $qty;
+		// If product have stock quantity, then we might be interested in that
+		if ($product->sc_qty != '') {
+			// Let's see if we don't allow negative stock and we are trying to
+			// add more products than we have in stock
+			$data = $this->modules->getModuleConfigData('ShoppingCart');
+			if(!$data['allowNegativeStock'] && $qty > $product->sc_qty) {
+				return false;
+			}
+		}
 		return true;
 	}
 	
@@ -185,6 +232,28 @@ class ShoppingCart extends WireData implements Module
 		return true;
 	}
 	
+	public function checkStockAndReturnMaxQty($product, $qty) {
+		
+		if (!$this->checkStock($product, $qty)) {
+			// If stock level fails, we add all there is and add notification about it
+			$oldItems = $this->getCurrentCart();
+			$qty = 0;
+			foreach($oldItems as $p) {		// TODO: Probably better ways to do this than loop all?
+				if ($product->id == $p->product_id && $product->sc_qty > 0) {
+					$qty = $product->sc_qty;
+				}
+			}
+			
+			// Little bit different error message if it is totally over or just partly
+			if ($qty > 0) $errormsg = sprintf(__("Sorry, but we don't have that many %s in stock. Added all we have in your cart."), $product->title);
+			else $errormsg = sprintf(__("Sorry, but we don't have any %s in stock."), $product->title);
+			
+			$this->session->error($errormsg);
+			
+		}
+		return $qty;
+	}
+	
 	/**
 	 * Returns cart items as JSON
 	 *
@@ -199,6 +268,10 @@ class ShoppingCart extends WireData implements Module
 		$items = array();
 		
 		foreach ($products as $product_id => $qty) {
+			// First we check if stock level for that product is good enough
+			$product = $this->pages->get($product_id);
+			$qty = $this->checkStockAndReturnMaxQty($product, $qty);
+			
 			if ($qty > 0)
 				$items[] = $this->_newItem((int) $product_id, (int) $qty);
 		}
@@ -256,6 +329,29 @@ class ShoppingCart extends WireData implements Module
 		$new_item->qty        = $qty;
 		
 		return $new_item;
+	}
+	
+	static public function getModuleConfigInputfields(Array $data) {
+		// this is a container for fields, basically like a fieldset
+		$fields = new InputfieldWrapper();
+
+		// since this is a static function, we can't use $this->modules, so get them from the global wire() function
+		$modules = wire('modules');
+
+		//$data = array_merge(self::getDefaultData(), $data);
+				
+		
+
+		$f = $modules->get("InputfieldCheckbox");
+		$f->name = 'allowNegativeStock';
+		$f->label = "Allow negative stock?";
+		$f->description = "If you choose this, customers are able to buy products that you don't have enough in stock";
+		$f->value = 1;
+		$f->attr('checked', empty($data['allowNegativeStock']) ? '' : 'checked');
+		$fields->add($f);		
+		
+		
+		return $fields;
 	}
 	
 	public function install()
