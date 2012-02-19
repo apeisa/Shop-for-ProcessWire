@@ -60,7 +60,7 @@ class PaymentExample extends PaymentAbstract {
 		
 		$out .=	"<ul>";	
 		// Products
-		foreach($order->children as $p) {
+		foreach($order->children('check_access=0') as $p) {
 			$out .= "<li><strong>{$p->title}</strong> {$p->sc_price}€ x {$p->sc_qty} (total: ". $p->sc_qty * $p->sc_price ."€)</li>";
 		}
 		$out .= "</ul>";
@@ -68,7 +68,6 @@ class PaymentExample extends PaymentAbstract {
 		$out .= "<h2>Shipping details</h2>";
 		
 		$out .=	"<ul>";	
-		// Products
 		$out .= "<li>First name: $order->sc_firstname</li>";
 		$out .= "<li>Last name: $order->sc_lastname</li>";
 		$out .= "<li>Email: $order->email</li>";
@@ -80,7 +79,11 @@ class PaymentExample extends PaymentAbstract {
 		$out .= "<li>Email address from user: {$order->sc_customer->email}</li>";
 		$out .= "</ul>";
 		
-		
+		$out .= "<h2>Other interesting stuff</h2>";
+		$out .= "<ul>";
+		$out .= "<li>Current url: {$this->currentUrl}</li>";
+		$out .= "<li>Completed url: {$this->completedUrl}</li>";
+		$out .= "</ul>";
 		
 		// Usually we would use some payment api or send people to 3rd party service like paypal
 		// and process their reply
