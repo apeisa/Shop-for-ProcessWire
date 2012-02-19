@@ -32,13 +32,13 @@ class ShoppingOrdersManagement extends Process {
 		$table->headerRow(array($this->_('Customer'), $this->_('Status'), $this->_('Total Sum'), $this->_('Time')));
 
 		$orders = $this->pages->find('template=sc-order,limit=20,sort=-created');
-		
+
 		if($orders->count() == 0) {
 			$out .= $this->_("No orders yet");
 		} else {
 
 			foreach($orders as $order) {
-	
+
 				 // output in table rows with edit link and delete checkbox?
 				 $table->row(array(
 					 $order->sc_firstname . " " . $order->sc_lastname => "edit/?id={$order->id}",
@@ -84,9 +84,9 @@ class ShoppingOrdersManagement extends Process {
 		$this->fuel->breadcrumbs->add(new Breadcrumb('../', 'Orders'));
 		$id = (int) $this->input->get->id;
 		$order = $this->pages->get($id);
-		
+
 		if ($id < 1 || $order->template != 'sc-order') return false;
-		
+
 		$out = '';
 
 		// Save processed date
@@ -100,7 +100,7 @@ class ShoppingOrdersManagement extends Process {
 			$order->sc_paid = time();
 			$order->save();
 		}
-		
+
 		// Change status
 		if ($this->input->post->status) {
 			$status = $this->pages->get("template=admin, name={$this->input->post->status}");
@@ -134,14 +134,14 @@ class ShoppingOrdersManagement extends Process {
 
 			// get product price from actual product page
 			$total_price = $item->sc_qty * $item->sc_price;
-			
+
 			$table->row(array(
 			   $item->title,
 			   $item->sc_qty,
 			   $item->sc_price,
 			   $total_price
 			));
-			
+
 			$order_total = $order_total + $total_price;
 		}
 
@@ -155,9 +155,9 @@ class ShoppingOrdersManagement extends Process {
 
 
 		$out .= $table->render();
-		
+
 		$out .= "<a class='edit-order' href='". $this->pages->get($this->config->adminRootPageID)->url ."page/edit/?id=$order->id'>". $this->_("Edit this order") ."</a>";
-		
+
 
 		if($order->sc_paid == 0) {
 			$out .= "<div id='paid_container' class='block'><h3>". $this->_("Customer hasn't paid this order yet") ."</h3>";
@@ -200,12 +200,12 @@ class ShoppingOrdersManagement extends Process {
 			$out .= "<p class='description'>" .  $this->_("This order has been marked processed on: ") . date($this->config->dateFormat,$order->sc_processed) . "</p>";
 			$out .= "</div>";
 		}
-		
+
 		$out .= "<div id='status_container' class='block'>";
 		$form = $this->modules->get('InputfieldForm');
 		$form->attr('action', './?id=' . $id);
 		$form->attr('method', 'post');
-		
+
 		$container = new InputfieldWrapper();
 		$field = $this->modules->get('InputfieldSelect');
 		$statuses = $this->pages->get('template=admin,name=statuses')->children();
@@ -217,8 +217,8 @@ class ShoppingOrdersManagement extends Process {
 			else $selected = array();
 			$field->addOption($status->name, $status->title, $selected);
 		}
-		$container->add($field); 
-		
+		$container->add($field);
+
 
 		$field = $this->modules->get('InputfieldSubmit');
 		$field->attr('id+name', 'changestatus');
@@ -231,9 +231,9 @@ class ShoppingOrdersManagement extends Process {
 
 		return $out;
 	}
-	
+
 	public function install() {
-		
+
 
 		$orders = new Page();
 		$orders->template = $this->templates->get("admin");
@@ -242,9 +242,9 @@ class ShoppingOrdersManagement extends Process {
 		$orders->name = 'manage-orders';
 		$orders->process = $this;
 		$orders->save();
-		
+
 	}
-	
+
 	public function uninstall() {
 		$p = $this->pages->get('template=admin, name=manage-orders, include=all');
 		if ($p->id) $this->pages->delete($p, true); // Recursive delete
