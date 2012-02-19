@@ -13,7 +13,19 @@ class ShoppingCart extends WireData implements Module, ConfigurableModule
 			'autoload' => true
 		);
 	}
-	
+
+	static public function getDefaultData() {
+	   return array(
+		   'allowNegativeStock' => 1
+		   );
+	}
+
+	public function __construct() {
+	   foreach(self::getDefaultData() as $key => $value) {
+		   $this->$key = $value;
+	   }
+	}
+
 	public function init()
 	{
 		if ($this->input->post->sc_product_id) {
@@ -22,19 +34,19 @@ class ShoppingCart extends WireData implements Module, ConfigurableModule
 			$this->addProductToCart($this->pages->get($product_id), $qty);
 			$this->session->redirect("./");
 		}
-		
+
 		if ($this->input->post->sc_update) {
 			$this->updateCart($this->input->post->items);
 			$this->session->redirect("./");
 		}
-		
+
 		if ($this->input->get->sc_remove) {
 			$product_id = (int) $this->input->get->sc_remove;
 			$product = $this->pages->get($product_id);
 			$this->addProductToCart($product, 0);
 			$this->session->redirect("./");
 		}
-		
+
 		if ($this->input->post->sc_checkout) {
 			$this->updateCart($this->input->post->items);
 			$checkout = $this->pages->get("template=sc-checkout, include=hidden");
@@ -44,11 +56,11 @@ class ShoppingCart extends WireData implements Module, ConfigurableModule
 				$this->session->redirect("./");
 		}
 	}
-	
-	
+
+
 	/**
 	 * Returns the default markup for "Add to cart form"
-	 * 
+	 *
 	 * @param Page $product Actual product page (usually just $page on your template)
 	 * @param string $postUrl Url where we post (you can think that as a redirect, since post are handled by this autoload module)
 	 * @return string|false Markup for "Add to cart form" or false if there ain't numeric and over 0 price for the product
@@ -58,47 +70,46 @@ class ShoppingCart extends WireData implements Module, ConfigurableModule
 	{
 		if (!(is_numeric($product->sc_price)) || $product->sc_price <= 0)
 			return false;
-		
-		$data = $this->modules->getModuleConfigData('ShoppingCart');
-		if(!$data['allowNegativeStock'] && $product->sc_qty < 1) {
+
+		if(!$this->allowNegativeStock && $product->sc_qty < 1) {
 			return $this->_("Sorry, we are out of stock.");
 		}
-		
-		
+
+
 		$out = "<form method='post' action='$postUrl'>";
 		$out .= "<input type='hidden' value='{$product->id}' name='sc_product_id' />";
 		$out .= "<input type='number' name='sc_qty' value='1'/>";
 		$out .= "<input type='submit' value='" . $this->_("Add to cart") . "' />";
 		$out .= "</form>";
-		
-		
-		
+
+
+
 		return $out;
 	}
-	
+
 	/**
 	 * Returns true|false depending if product was added succesfully to the cart
-	 * 
+	 *
 	 * @param Page $product Actual product page
 	 * @param int $qty How many items added, use 0 if you want to remove the item
-	 * @return true|false 
+	 * @return true|false
 	 *
 	 */
 	public function addProductToCart(Page $product, $qty = 1)
 	{
 		$qty   = (int) $qty;
-		
+
 		if ($qty < 0)
 			return false;
-		
+
 		if (!$this->checkStock($product, $qty)) {
 			$errormsg = sprintf($this->_n("Sorry, we have only %d item left. Try again, please.", "Sorry, we have only %d items left. Try again, please.", $product->sc_qty), $product->sc_qty);
 			$this->session->error($errormsg);
 			return false;
 		}
-		
+
 		$items = $this->getCurrentCart();
-		
+
 		// There is not a single product available
 		if (count($items) == 0) {
 			if ($qty > 0)
@@ -106,21 +117,21 @@ class ShoppingCart extends WireData implements Module, ConfigurableModule
 		} else {
 			$product_found = false;
 			foreach ($items as $key => $item) {
-				
+
 				// There is already this product on cart
 				if ($item->product_id === $product->id) {
-					
+
 					// We'll check if we have enough stock for this new quantity
 					$newQty = $item->qty + $qty;
 					$newQty = $this->checkStockAndReturnMaxQty($product, $newQty);
 					$item->qty = $newQty;
-					
+
 					// If zero qty added, remove from basket
 					if ($qty === 0) {
 						unset($items[$key]);
 						$items = array_values($items);
 					}
-					
+
 					$product_found = true;
 					break;
 				}
@@ -131,16 +142,16 @@ class ShoppingCart extends WireData implements Module, ConfigurableModule
 					$items[] = $this->_newItem($product->id, $qty);
 			}
 		}
-		
+
 		$total_sum = $this->getTotalSumFromItems($items);
 		$items     = json_encode($items);
-		
+
 		// Update cart to db or insert new row if there isn't
 		$update = $this->db->query("INSERT INTO {$this->className} SET items = '$items', total_sum = $total_sum, session_id = '" . session_id() . "' ON DUPLICATE KEY UPDATE items = '$items', total_sum = $total_sum");
-		
+
 		return true;
 	}
-	
+
 	/*
 	 * Returns true if it is ok to add product to basket
 	 *
@@ -154,31 +165,30 @@ class ShoppingCart extends WireData implements Module, ConfigurableModule
 		if ($product->sc_qty != '') {
 			// Let's see if we don't allow negative stock and we are trying to
 			// add more products than we have in stock
-			$data = $this->modules->getModuleConfigData('ShoppingCart');
-			if(!$data['allowNegativeStock'] && $qty > $product->sc_qty) {
+			if(!$this->allowNegativeStock && $qty > $product->sc_qty) {
 				return false;
 			}
 		}
 		return true;
 	}
-	
+
 	/**
 	 * Returns markup for actual cart, where is possibilities to edit and remove products and qty
-	 * 
+	 *
 	 * @return string markup for cart
 	 *
 	 */
 	public function renderCart($viewOnly = false)
 	{
-		
+
 		$items = $this->getCurrentCart();
-		
+
 		if (count($items) == 0) {
 			return $this->_("No items in cart");
 		}
-		
+
 		$total_sum = $this->getTotalSumFromItems($items);
-		
+
 		$out = "<h2>" . $this->_("Items in your cart:") . "</h2>";
 		if (!$viewOnly) $out .= "<form method='post' action='./'>";
 		$out .= "<table>";
@@ -187,12 +197,12 @@ class ShoppingCart extends WireData implements Module, ConfigurableModule
 		$out .= "<th>" . $this->_('Price') . "</th>";
 		if (!$viewOnly) $out .= "<th>" . $this->_('Remove?') . "</th>";
 		$out .= "</tr>";
-		
-		foreach ($items as $item) {			
+
+		foreach ($items as $item) {
 			// get product price from actual product page
 			$product     = $this->pages->get($item->product_id);
 			$total_price = $item->qty * $product->sc_price;
-			
+
 			$out .= "<tr>";
 			$out .= "<td>{$product->title}</td>";
 			if (!$viewOnly)	{
@@ -200,12 +210,12 @@ class ShoppingCart extends WireData implements Module, ConfigurableModule
 			} else {
 				$out .= "<td>" . (int) $item->qty . "</td>";
 			}
-			
+
 			$out .= "<td>{$total_price}</td>";
 			if (!$viewOnly) $out .= "<td><a class='remove' href='./?sc_remove=" . $product->id . "'>" . $this->_("Remove") . "</a></td>";
 			$out .= "</tr>";
 		}
-		
+
 		$out .= "<tr class='final'><td>" . $this->_("Total:") . "</td><td>&nbsp;</td><td id='total_sum'>$total_sum</td><td></td></tr>";
 		$out .= "</table>";
 		if (!$viewOnly) {
@@ -213,15 +223,15 @@ class ShoppingCart extends WireData implements Module, ConfigurableModule
 			if ($this->modules->isInstalled('ShoppingCheckout')) $out .= "<input type='submit' name='sc_checkout' value=' " . $this->_("Continue to checkout") . "' />";
 		}
 		if (!$viewOnly) $out .= "</form>";
-		
+
 		return $out;
 	}
-	
+
 	/**
 	 * Returns true
 	 *
 	 * Removes product from cart
-	 * 
+	 *
 	 * @param Page $product Actual product that you want to remove
 	 * @return true
 	 *
@@ -231,9 +241,9 @@ class ShoppingCart extends WireData implements Module, ConfigurableModule
 		$this->addProductToCart($product, 0);
 		return true;
 	}
-	
+
 	public function checkStockAndReturnMaxQty($product, $qty) {
-		
+
 		if (!$this->checkStock($product, $qty)) {
 			// If stock level fails, we add all there is and add notification about it
 			$oldItems = $this->getCurrentCart();
@@ -243,22 +253,22 @@ class ShoppingCart extends WireData implements Module, ConfigurableModule
 					$qty = $product->sc_qty;
 				}
 			}
-			
+
 			// Little bit different error message if it is totally over or just partly
 			if ($qty > 0) $errormsg = sprintf(__("Sorry, but we don't have that many %s in stock. Added all we have in your cart."), $product->title);
 			else $errormsg = sprintf(__("Sorry, but we don't have any %s in stock."), $product->title);
-			
+
 			$this->session->error($errormsg);
-			
+
 		}
 		return $qty;
 	}
-	
+
 	/**
 	 * Returns cart items as JSON
 	 *
 	 * Updates the current cart
-	 * 
+	 *
 	 * @param array $products Simple array that has product_id:s as keys and qty as value array(123 => 4, 124 => 2)
 	 * @return string with current items as JSON string
 	 *
@@ -266,31 +276,31 @@ class ShoppingCart extends WireData implements Module, ConfigurableModule
 	public function updateCart(array $products)
 	{
 		$items = array();
-		
+
 		foreach ($products as $product_id => $qty) {
 			// First we check if stock level for that product is good enough
 			$product = $this->pages->get($product_id);
 			$qty = $this->checkStockAndReturnMaxQty($product, $qty);
-			
+
 			if ($qty > 0)
 				$items[] = $this->_newItem((int) $product_id, (int) $qty);
 		}
-		
+
 		$total_sum = $this->getTotalSumFromItems($items);
 		$items     = json_encode($items);
-		
+
 		$update = $this->db->query("UPDATE {$this->className} SET items = '$items', total_sum = $total_sum WHERE session_id = '" . session_id() . "'");
-		
+
 		return $items;
-		
+
 	}
-	
+
 	public function getTotalSumFromItems($items)
 	{
 		$total_sum = 0;
 		if (count($items) < 1)
 			return $total_sum;
-		
+
 		foreach ($items as $item) {
 			$product     = $this->pages->get($item->product_id);
 			$total_price = $item->qty * $product->sc_price;
@@ -298,7 +308,7 @@ class ShoppingCart extends WireData implements Module, ConfigurableModule
 		}
 		return $total_sum;
 	}
-	
+
 	public function getCurrentCart()
 	{
 		$sid    = session_id();
@@ -310,27 +320,27 @@ class ShoppingCart extends WireData implements Module, ConfigurableModule
 			return json_decode($items);
 		}
 	}
-	
+
 	public function getTotalSumFromCart()
 	{
 		$items = $this->getCurrentCart();
 		return $this->getTotalSumFromItems($items);
 	}
-	
+
 	public function getNumberOfItems()
 	{
 		return count($this->getCurrentCart());
 	}
-	
+
 	private function _newItem($product_id, $qty)
 	{
 		$new_item             = new stdClass;
 		$new_item->product_id = $product_id;
 		$new_item->qty        = $qty;
-		
+
 		return $new_item;
 	}
-	
+
 	static public function getModuleConfigInputfields(Array $data) {
 		// this is a container for fields, basically like a fieldset
 		$fields = new InputfieldWrapper();
@@ -338,9 +348,9 @@ class ShoppingCart extends WireData implements Module, ConfigurableModule
 		// since this is a static function, we can't use $this->modules, so get them from the global wire() function
 		$modules = wire('modules');
 
-		//$data = array_merge(self::getDefaultData(), $data);
-				
-		
+		$data = array_merge(self::getDefaultData(), $data);
+
+
 
 		$f = $modules->get("InputfieldCheckbox");
 		$f->name = 'allowNegativeStock';
@@ -348,12 +358,12 @@ class ShoppingCart extends WireData implements Module, ConfigurableModule
 		$f->description = "If you choose this, customers are able to buy products that you don't have enough in stock";
 		$f->value = 1;
 		$f->attr('checked', empty($data['allowNegativeStock']) ? '' : 'checked');
-		$fields->add($f);		
-		
-		
+		$fields->add($f);
+
+
 		return $fields;
 	}
-	
+
 	public function install()
 	{
 		if (!$this->fields->get('sc_price')) {
@@ -364,7 +374,7 @@ class ShoppingCart extends WireData implements Module, ConfigurableModule
 			$f->label     = 'Price of the product';
 			$f->save();
 		}
-		
+
 		if (!$this->fields->get('sc_qty')) {
 			$f = new Field();
 			$f->type = $this->modules->get("FieldtypeInteger");
@@ -372,7 +382,7 @@ class ShoppingCart extends WireData implements Module, ConfigurableModule
 			$f->label = 'Quantity';
 			$f->save();
 		}
-		
+
 		$sql = <<< _END
 
 		CREATE TABLE {$this->className} (
@@ -385,10 +395,10 @@ class ShoppingCart extends WireData implements Module, ConfigurableModule
 		  ENGINE = MyISAM DEFAULT CHARSET=utf8;
 
 _END;
-		
+
 		$this->db->query($sql);
 	}
-	
+
 	public function uninstall()
 	{
 		$this->db->query("DROP TABLE {$this->className}");
