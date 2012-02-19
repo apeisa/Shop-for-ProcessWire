@@ -4,13 +4,19 @@ abstract class PaymentAbstract extends WireData implements Module {
 		
 	public $completedUrl;
 	
+	public function init() {
+	
+	}
+	
 	public function __construct() {
 		$data = $this->modules->getModuleConfigData('ShoppingCheckout');
 		if (!isset($data['completedUrlSegment'])) {
 			$module = $this->modules->get('ShoppingCheckout');
 			$data = $module::getDefaultData();
 		}
-		$this->completedUrl = '../' . $data['completedUrlSegment'] . '/';
+		$page = $this->page;
+		$this->currentUrl = $page->url . $data['paymentUrlSegment'] . '/';
+		$this->completedUrl = $page->url . $data['completedUrlSegment'] . '/';
 	}
 	
 	/*
