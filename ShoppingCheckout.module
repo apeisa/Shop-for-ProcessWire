@@ -33,48 +33,48 @@ class ShoppingCheckout extends WireData implements Module, ConfigurableModule
 
 		return array(
 				'firstname' => array(
-						'label' 	=> __('First name'),
+						'label' 	=> $this->_('First name'),
 						'defaults' 	=> $required
 				),
 				'lastname' => array(
-						'label' 	=> __('Last name'),
+						'label' 	=> $this->_('Last name'),
 						'defaults'	=> $required
 				),
 				'email'	=> array(
-						'label'		=> __('Email'),
+						'label'		=> $this->_('Email'),
 						'defaults'	=> $required
 				),
 				'phone'	=> array(
-						'label'		=> __('Phone number'),
+						'label'		=> $this->_('Phone number'),
 						'defaults'	=> $visible
 				),
 				'streetaddress'	=> array(
-						'label'		=> __('Street address'),
+						'label'		=> $this->_('Street address'),
 						'defaults'	=> $required
 				),
 				'zip' => array(
-						'label'		=> __('Zip'),
+						'label'		=> $this->_('Zip'),
 						'defaults'	=> $hidden
 				),
 				'city' => array(
-						'label'		=> __('City'),
+						'label'		=> $this->_('City'),
 						'defaults'	=> $required
 				),
 				'country' => array(
-						'label'		=> __('Country'),
+						'label'		=> $this->_('Country'),
 						'defaults'	=> $hidden
 				),
 				'greetings' => array(
-						'label'		=> __('Details about my order'),
+						'label'		=> $this->_('Details about my order'),
 						'defaults'	=> $visible,
 						'type'		=> 'textarea'
 				),
 				'custom1' => array(
-						'label'		=> __('Custom field #1'),
+						'label'		=> $this->_('Custom field #1'),
 						'defaults'	=> $hidden
 				),
 				'custom2' => array(
-						'label'		=> __('Custom field #2'),
+						'label'		=> $this->_('Custom field #2'),
 						'defaults'	=> $hidden
 				)
 	    );
