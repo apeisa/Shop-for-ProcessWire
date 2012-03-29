@@ -430,7 +430,7 @@ class ShoppingCheckout extends WireData implements Module, ConfigurableModule
 
 		$items = $this->modules->ShoppingCart->getCurrentCart();
 
-		$orderName = '';
+		$orderName = time();
 		foreach($fields as $field) {
 			$orderName .= $field;
 		}
