@@ -1,22 +1,28 @@
-
 <?php
 
 class ShoppingCart extends WireData implements Module, ConfigurableModule
 {
+
 	public static function getModuleInfo()
 	{
 		return array(
 			'title' => 'Shopping Cart',
 			'version' => 005,
 			'summary' => 'Simple shopping cart for PW',
-			'singular' => false,
+			'singular' => true,
 			'autoload' => true
 		);
 	}
 
 	static public function getDefaultData() {
 	   return array(
-		   'allowNegativeStock' => 1
+		   'allowNegativeStock' => 1,
+		   'currencyBefore' => 0,
+		   'currency' => '&euro;',
+		   'currencyCode' => 'EUR',
+		   'decimals' => 2,
+		   'dec_point' => ',',
+		   'thousands_sep' => ''
 		   );
 	}
 
@@ -55,6 +61,7 @@ class ShoppingCart extends WireData implements Module, ConfigurableModule
 			else
 				$this->session->redirect("./");
 		}
+
 	}
 
 
@@ -66,8 +73,11 @@ class ShoppingCart extends WireData implements Module, ConfigurableModule
 	 * @return string|false Markup for "Add to cart form" or false if there ain't numeric and over 0 price for the product
 	 *
 	 */
-	public function renderAddToCart(Page $product, $postUrl = "./")
+	public function renderAddToCart(Page $product = NULL, $postUrl = "./")
 	{
+		if (is_null($product))
+			$product = wire('page');
+
 		if (!(is_numeric($product->sc_price)) || $product->sc_price <= 0)
 			return false;
 
@@ -147,7 +157,7 @@ class ShoppingCart extends WireData implements Module, ConfigurableModule
 		$items     = json_encode($items);
 
 		// Update cart to db or insert new row if there isn't
-		$update = $this->db->query("INSERT INTO {$this->className} SET items = '$items', total_sum = $total_sum, session_id = '" . session_id() . "' ON DUPLICATE KEY UPDATE items = '$items', total_sum = $total_sum");
+		$update = $this->db->query("INSERT INTO {$this->className} SET items = '$items', total_sum = $total_sum, session_id = '" . $this->getSession() . "' ON DUPLICATE KEY UPDATE items = '$items', total_sum = $total_sum");
 
 		return true;
 	}
@@ -178,8 +188,9 @@ class ShoppingCart extends WireData implements Module, ConfigurableModule
 	 * @return string markup for cart
 	 *
 	 */
-	public function renderCart($viewOnly = false)
+	public function renderCart($viewOnly = false, ShippingAbstract $shippingModule = NULL)
 	{
+		$out = '';
 
 		$items = $this->getCurrentCart();
 
@@ -189,7 +200,6 @@ class ShoppingCart extends WireData implements Module, ConfigurableModule
 
 		$total_sum = $this->getTotalSumFromItems($items);
 
-		$out = "<h2>" . $this->_("Items in your cart:") . "</h2>";
 		if (!$viewOnly) $out .= "<form method='post' action='./'>";
 		$out .= "<table>";
 		$out .= "<tr><th>" . $this->_('Product') . "</th>";
@@ -211,16 +221,25 @@ class ShoppingCart extends WireData implements Module, ConfigurableModule
 				$out .= "<td>" . (int) $item->qty . "</td>";
 			}
 
-			$out .= "<td>{$total_price}</td>";
+
+
+			$out .= "<td>" . $this->renderPrice($total_price) . "</td>";
 			if (!$viewOnly) $out .= "<td><a class='remove' href='./?sc_remove=" . $product->id . "'>" . $this->_("Remove") . "</a></td>";
 			$out .= "</tr>";
 		}
 
-		$out .= "<tr class='final'><td>" . $this->_("Total:") . "</td><td>&nbsp;</td><td id='total_sum'>$total_sum</td><td></td></tr>";
+		if ($shippingModule) {
+			$shippingCost = $shippingModule->calculateShippingCost();
+			$total_sum = $total_sum + $shippingCost;
+			$shippingCost = $this->renderPrice($shippingCost);
+			$out .= "<tr class='shippingRow'><td colspan='2'>". $this->_("Shipping costs") ."</td><td>$shippingCost</td></tr>";
+		}
+
+		$out .= "<tr class='final'><td>" . $this->_("Total:") . "</td><td>&nbsp;</td><td id='total_sum'>". $this->renderPrice($total_sum) ."</td><td></td></tr>";
 		$out .= "</table>";
 		if (!$viewOnly) {
-			$out .= "<input type='submit' name='sc_update' value=' " . $this->_("Update Cart") . "' />";
-			if ($this->modules->isInstalled('ShoppingCheckout')) $out .= "<input type='submit' name='sc_checkout' value=' " . $this->_("Continue to checkout") . "' />";
+			$out .= "<input type='submit' class='sc_update submit' name='sc_update' value=' " . $this->_("Update Cart") . "' />";
+			if ($this->modules->isInstalled('ShoppingCheckout')) $out .= "<input type='submit' class='sc_checkout submit' name='sc_checkout' value=' " . $this->_("Continue to checkout") . "' />";
 		}
 		if (!$viewOnly) $out .= "</form>";
 
@@ -240,6 +259,16 @@ class ShoppingCart extends WireData implements Module, ConfigurableModule
 	{
 		$this->addProductToCart($product, 0);
 		return true;
+	}
+
+	public function renderPrice($price) {
+		settype($price, "float");
+		$price = number_format($price, $this->decimals, $this->dec_point, $this->thousands_sep);
+		$space = ($this->spaceOnCurrency) ? " " : "";
+		if ($this->currencyBefore == 1)
+			return $this->currency . $space . $price;
+		else
+			return $price . $space . $this->currency;
 	}
 
 	public function checkStockAndReturnMaxQty($product, $qty) {
@@ -289,13 +318,13 @@ class ShoppingCart extends WireData implements Module, ConfigurableModule
 		$total_sum = $this->getTotalSumFromItems($items);
 		$items     = json_encode($items);
 
-		$update = $this->db->query("UPDATE {$this->className} SET items = '$items', total_sum = $total_sum WHERE session_id = '" . session_id() . "'");
+		$update = $this->db->query("UPDATE {$this->className} SET items = '$items', total_sum = $total_sum WHERE session_id = '" . $this->getSession() . "'");
 
 		return $items;
 
 	}
 
-	public function getTotalSumFromItems($items)
+	public function getTotalSumFromItems($items, ShippingAbstract $shippingOption = NULL)
 	{
 		$total_sum = 0;
 		if (count($items) < 1)
@@ -306,12 +335,17 @@ class ShoppingCart extends WireData implements Module, ConfigurableModule
 			$total_price = $item->qty * $product->sc_price;
 			$total_sum   = $total_sum + $total_price;
 		}
+
+		if ($shippingOption) {
+			$total_sum = $total_sum + $shippingOption->calculateShippingCost();
+		}
+
 		return $total_sum;
 	}
 
 	public function getCurrentCart()
 	{
-		$sid    = session_id();
+		$sid    = $this->getSession();
 		$result = $this->db->query("SELECT items FROM {$this->className} WHERE session_id = '$sid' ORDER BY last_modified LIMIT 1");
 		if ($result->num_rows === 0) {
 			return array();
@@ -327,9 +361,25 @@ class ShoppingCart extends WireData implements Module, ConfigurableModule
 		return $this->getTotalSumFromItems($items);
 	}
 
-	public function getNumberOfItems()
+	public function getNumberOfItems($uniqueItems = true)
 	{
-		return count($this->getCurrentCart());
+		if ($uniqueItems) {
+			return count($this->getCurrentCart());
+		} else {
+			$qty = 0;
+			foreach($this->getCurrentCart() as $item) {
+				$qty += $item->qty;
+			}
+			return $qty;
+		}
+	}
+
+	public function getSession() {
+		if(isset($_COOKIE['pwshopSession']))
+			return sha1($_COOKIE['pwshopSession']);
+
+		setcookie("pwshopSession", session_id(), time()+60*60*24*7); // 7 days cookie
+		return sha1(session_id());
 	}
 
 	private function _newItem($product_id, $qty)
@@ -350,7 +400,57 @@ class ShoppingCart extends WireData implements Module, ConfigurableModule
 
 		$data = array_merge(self::getDefaultData(), $data);
 
+		$fields = new InputfieldWrapper();
 
+		// since this is a static function, we can't use $this->modules, so get them from the global wire() function
+		$modules = wire('modules');
+
+
+		$f = $modules->get("InputfieldText");
+		$f->attr('name', 'currencyCode');
+		$f->attr('value', $data['currencyCode']);
+		$f->label = "Currency Code";
+		$f->description = "Put official ISO currency code here: http://en.wikipedia.org/wiki/Currency_codes";
+		$fields->add($f);
+
+		$f = $modules->get("InputfieldText");
+		$f->attr('name', 'currency');
+		$f->attr('value', $data['currency']);
+		$f->label = "Currency output";
+		$f->description = "How currency will be outputted in html markup? Ie. &amp;euro;";
+		$fields->add($f);
+
+		$f = $modules->get("InputfieldText");
+		$f->attr('name', 'dec_point');
+		$f->attr('value', $data['dec_point']);
+		$f->label = "Decimal point on prices";
+		$fields->add($f);
+
+		$f = $modules->get("InputfieldText");
+		$f->attr('name', 'thousands_sep');
+		$f->attr('value', $data['thousands_sep']);
+		$f->label = "Thousands separator on prices";
+		$fields->add($f);
+
+		$f = $modules->get("InputfieldInteger");
+		$f->attr('name', 'decimals');
+		$f->attr('value', $data['decimals']);
+		$f->label = "Number of decimals on prices";
+		$fields->add($f);
+
+		$f = $modules->get("InputfieldCheckbox");
+		$f->name = 'currencyBefore';
+		$f->label = "Show currency before price?";
+		$f->value = 1;
+		$f->attr('checked', empty($data['currencyBefore']) ? '' : 'checked');
+		$fields->add($f);
+
+		$f = $modules->get("InputfieldCheckbox");
+		$f->name = 'spaceOnCurrency';
+		$f->label = "Show space between price and currency?";
+		$f->value = 1;
+		$f->attr('checked', empty($data['spaceOnCurrency']) ? '' : 'checked');
+		$fields->add($f);
 
 		$f = $modules->get("InputfieldCheckbox");
 		$f->name = 'allowNegativeStock';

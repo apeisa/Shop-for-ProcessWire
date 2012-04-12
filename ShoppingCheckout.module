@@ -40,14 +40,6 @@ class ShoppingCheckout extends WireData implements Module, ConfigurableModule
 						'label' 	=> __('Last name'),
 						'defaults'	=> $required
 				),
-				'email'	=> array(
-						'label'		=> __('Email'),
-						'defaults'	=> $required
-				),
-				'phone'	=> array(
-						'label'		=> __('Phone number'),
-						'defaults'	=> $visible
-				),
 				'streetaddress'	=> array(
 						'label'		=> __('Street address'),
 						'defaults'	=> $required
@@ -63,6 +55,14 @@ class ShoppingCheckout extends WireData implements Module, ConfigurableModule
 				'country' => array(
 						'label'		=> __('Country'),
 						'defaults'	=> $hidden
+				),
+				'email'	=> array(
+						'label'		=> __('Email'),
+						'defaults'	=> $required
+				),
+				'phone'	=> array(
+						'label'		=> __('Phone number'),
+						'defaults'	=> $visible
 				),
 				'greetings' => array(
 						'label'		=> __('Details about my order'),
@@ -86,7 +86,8 @@ class ShoppingCheckout extends WireData implements Module, ConfigurableModule
 		$defaultData = array(
 		   'confirmationUrlSegment' => "confirmation",
 		   'paymentUrlSegment' 		=> "payment",
-		   'completedUrlSegment' 	=> "completed"
+		   'completedUrlSegment' 	=> "completed",
+		   'customThankyou' => 0
 			);
 
 		foreach(self::getDefaultFields() as $key => $arr) {
@@ -158,10 +159,20 @@ class ShoppingCheckout extends WireData implements Module, ConfigurableModule
 	 *
 	 */
 	public function renderInformation() {
-		$sid = session_id();
+
+		// First we check if there already is unprocessed order with this user
+		$sid = $this->modules->get("ShoppingCart")->getSession();
 		$order = $this->pages->get("template=sc-order, sc_session={$sid}, status=unpublished, limit=1, sort=-created");
+
+		// If we have already an order, we either go to payment or remove it, depending if customer is already added new products
 		if ($order->id) {
-			$this->session->redirect("./{$this->paymentUrlSegment}/");
+			// Customer has failed order, but has added new products to cart. Remove old one and continue with new
+			if ($this->modules->ShoppingCart->getNumberOfItems() > 0) {
+				$this->pages->delete($order, true);
+			} else {
+				$this->session->redirect("./{$this->paymentUrlSegment}/");
+			}
+
 		}
 
 		if ($this->modules->ShoppingCart->getNumberOfItems() == 0)
@@ -181,24 +192,18 @@ class ShoppingCheckout extends WireData implements Module, ConfigurableModule
 
 		$out .= $this->renderInformationFormItems();
 
-		$paymentModules = $this->modules->find('className^=Payment');
-		if ($paymentModules->count() > 0) {
-			$out .= "<select name='paymentmethod'>";
-			foreach($paymentModules as $module) {
-				$info = $module->getModuleInfo();
-				$selected = ($this->session->orderArray['paymentmethod']['value'] == get_class($module)) ? "selected" : "";
-				$out .= "<option $selected value='". get_class($module) ."'>".$info['title']."</option>";
-			}
-			$out .= "</select>";
-			$out .= "<input type='submit' name='submit' value='" . $this->_("Complete the order") . "' />";
+		$out .= $this->renderShippingOptions();
+		$out .= $this->renderPaymentMethods();
 
-		} else {
-			$out .= "<p>No payment methods installed, you should have at least one</p>";
-		}
+
 
 		$out .= "</form>";
 
 		return $out;
+	}
+
+	public function renderCart() {
+		return $this->modules->ShoppingCart->renderCart();
 	}
 
 	/*
@@ -215,11 +220,24 @@ class ShoppingCheckout extends WireData implements Module, ConfigurableModule
 		$paymentmethod = $this->modules->get($this->session->orderArray['paymentmethod']['value']);
 		$paymentmethodInfo = $paymentmethod->getModuleInfo();
 
-		$out  = $this->modules->ShoppingCart->renderCart(true);
+		if (isset($this->session->orderArray['shippingoption']['value'])) {
+			$shippingOption = $this->modules->get($this->session->orderArray['shippingoption']['value']);
+		} else {
+			$shippingOption = NULL;
+		}
+
+		$out  = $this->modules->ShoppingCart->renderCart(true, $shippingOption);
 		$out .= "<form action='./' method='post'>";
+
+		if ($shippingOption) {
+			$out .= "<input type='hidden' name='shippingoption' value='". $this->session->orderArray['shippingoption']['value'] ."' />";
+		}
 		$out .= $this->renderInformationFormItems(true);
+
+		$out .= "<p class='paymentmethod required'><label for='paymentmethod'>" . $this->_("Payment method") . ":<span class='reqstar'>*</span></label><span>". $paymentmethod->title . "</span></p>";
 		$out .= "<input type='hidden' name='paymentmethod' value='". $this->session->orderArray['paymentmethod']['value'] ."' />";
-		$out .= "<input type='submit' name='submit' value='". $this->_("Pay this order using") . " " . $paymentmethodInfo['title'] ."' />";
+
+		$out .= "<p><input type='submit' class='submit payorder' name='submit' value='". $this->_("Place your order") . "' /></p>";
 		$out .= "</form>";
 		$out .= "<a href='../'>". $this->_("Go back to edit your information") ."</a>";
 
@@ -232,7 +250,7 @@ class ShoppingCheckout extends WireData implements Module, ConfigurableModule
 	 */
 	public function renderPayment() {
 		// Get latest unpublished order from current user
-		$sid = session_id();
+		$sid = $this->modules->get("ShoppingCart")->getSession();
 		$order = $this->pages->get("template=sc-order, sc_session={$sid}, status=unpublished, limit=1, sort=-created");
 		if ($order->id) {
 			$paymentmethod = $this->modules->get("{$order->sc_paymentmethod}");
@@ -248,7 +266,7 @@ class ShoppingCheckout extends WireData implements Module, ConfigurableModule
 	 *
 	 */
 	public function renderCompleted() {
-		if (!$this->session->orderId) return "Payment failed, session lost";
+		if (!$this->session->orderId) return $this->_("Payment failed, session lost");
 
 		$orderId = $this->session->orderId;
 		$order = $this->pages->get($orderId);
@@ -257,24 +275,83 @@ class ShoppingCheckout extends WireData implements Module, ConfigurableModule
 			throw new WireExpection("Payment error, order couldn't be found");
 
 		if ($order->is(Page::statusUnpublished)) {
-			$out = "Payment cancelled or failed!";
-			$out .= "<a href='../{$this->paymentUrlSegment}/'>Try again?</a>";
+			$out = "<h2>" . $this->_("Payment cancelled or failed.") . "</h2>";
+			$out .= "<a href='../{$this->paymentUrlSegment}/'>". $this->_("Try making payment again") ." ($order->sc_price &euro;)</a>";
 			return $out;
 		}
 		// Payment ok, order is done!
 		else {
 			$this->calculateNewStock($order);
-			$this->session->remove('orderId');
-			return "Thank you: $order->title !";
+			if ($this->customThankyou) {
+				$this->session->redirect($this->pages->get($this->customThankyou)->url);
+			} else {
+				$this->session->remove('orderId');
+				$out = "<h2>" . $this->_("Thank you for ordering from us.") . "</h2>";
+			}
+			return $out;
 		}
+	}
+
+	public function renderShippingOptions() {
+		$out = "";
+		$shoppingCartModule = $this->modules->get("ShoppingCart");
+		$shippingModules = $this->modules->find('className^=Shipping');
+		if ($shippingModules->count() > 0) {
+			$out .= "<p class='required'><label for='shippingoption'>" . $this->_("Choose shipping:") . " <span class='regstar'>*</span></label>";
+			$out .= "<select name='shippingoption'>";
+			foreach($shippingModules as $module) {
+				$cost = $module->calculateShippingCost();
+				$cost = $shoppingCartModule->renderPrice($cost);
+				if (isset($this->session->orderArray['shippingoption']['value'])) {
+					$selected = ($this->session->orderArray['shippingoption']['value'] == get_class($module)) ? "selected" : "";
+				} else {
+					$selected = '';
+				}
+
+				$out .= "<option $selected value='". get_class($module) ."'>".$module->title." <strong>(+$cost)</strong></option>";
+			}
+			$out .= "</select>";
+			$out .= "</p>";
+
+		} else {
+			$out = "";
+		}
+
+		return $out;
+	}
+
+	public function renderPaymentMethods() {
+		$out = "";
+		$paymentModules = $this->modules->find('className^=Payment');
+		if ($paymentModules->count() > 0) {
+			$out .= "<p class='required'><label for='paymentmethod'>" . $this->_("Choose payment method:") . " <span class='regstar'>*</span></label>";
+			$out .= "<select name='paymentmethod'>";
+			foreach($paymentModules as $module) {
+				$info = $module->getModuleInfo();
+				$selected = ($this->session->orderArray['paymentmethod']['value'] == get_class($module)) ? "selected" : "";
+				$out .= "<option $selected value='". get_class($module) ."'>".$module->title."</option>";
+			}
+			$out .= "</select>";
+			$out .= "</p>";
+			$out .= "<p>";
+			$out .= "<input class='submit' type='submit' name='submit' value='" . $this->_("Proceed to review your order") . "' />";
+			$out .= "</p>";
+
+		} else {
+			$out .= "<p>No payment methods installed, you should have at least one</p>";
+		}
+
+		return $out;
 	}
 
 	public function calculateNewStock(Page $order) {
 		foreach($order->children as $orderitem) {
 			$product = $orderitem->sc_product;
-			$product->setOutputFormatting(false);
-			$product->sc_qty = ($product->sc_qty - $orderitem->sc_qty); // TODO: We need to make sure that negative integers are allowed. Currently not..
-			$product->save();
+			if ($product->id) {
+				$product->setOutputFormatting(false);
+				$product->sc_qty = ($product->sc_qty - $orderitem->sc_qty); // TODO: We need to make sure that negative integers are allowed. Currently not..
+				$product->save();
+			}
 		}
 	}
 	/*
@@ -300,11 +377,15 @@ class ShoppingCheckout extends WireData implements Module, ConfigurableModule
 				$class  = ($this->$reqKey) ? 'required' : '';
 				$class .= (isset($field['error'])) ? ' error' : '';
 
-				$out .= "<p class='$key $class'>";
-				$out .= "<label for='$key'>";
-				$out .= $field['label'] . ":";
-				if ($this->$reqKey) $out .= "<span class='reqstar'>*</span>";
-				$out .= "</label>";
+
+
+				if (strlen($field['value']) > 0 || !$viewOnly) {
+					$out .= "<p class='$key $class'>";
+					$out .= "<label for='$key'>";
+					$out .= $field['label'] . ":";
+					if ($this->$reqKey) $out .= "<span class='reqstar'>*</span>";
+					$out .= "</label>";
+				}
 				if (isset($field['error'])) $out .= "<span class='errormsg'>". $field['error'] ."</span>";
 
 				if (!$viewOnly) {
@@ -315,12 +396,14 @@ class ShoppingCheckout extends WireData implements Module, ConfigurableModule
 						default:
 							$out .= "<input class='$class' name='$key' value='". $field['value'] ."' />";
 					}
+					$out .= "</p>";
 				}
-				else {
-					$out .= "<span>". $field['value'] ."</span>";
-					$out .= "<input type='hidden' name='$key' value='". $field['value'] ."' />";
+				else if (strlen($field['value']) > 0) {
+						$out .= "<span>". $field['value'] ."</span>";
+						$out .= "<input type='hidden' name='$key' value='". $field['value'] ."' />";
+						$out .= "</p>";
 				}
-				$out .= "</p>";
+
 			}
 		}
 
@@ -402,6 +485,9 @@ class ShoppingCheckout extends WireData implements Module, ConfigurableModule
 				}
 			}
 
+			if ($this->input->post->shippingoption) {
+				$orderArray['shippingoption']['value'] = $this->sanitizer->fieldName($this->input->post->shippingoption);
+			}
 			$orderArray['paymentmethod']['value'] = $this->sanitizer->fieldName($this->input->post->paymentmethod);
 			$this->session->set('orderArray', $orderArray);
 		}
@@ -426,6 +512,14 @@ class ShoppingCheckout extends WireData implements Module, ConfigurableModule
 		if ($this->session->orderArray['valid'] == FALSE) throw new WireException("Non-valid order got through.");
 
 		$fields = $this->session->orderArray['fields'];
+
+		if(isset($this->session->orderArray['shippingoption']['value'])) {
+			$fields['shippingoption']['value'] = $this->session->orderArray['shippingoption']['value'];
+			$shippingOption = $this->modules->get($this->session->orderArray['shippingoption']['value']);
+		} else {
+			$shippingOption = NULL;
+		}
+
 		$fields['paymentmethod']['value'] = $this->session->orderArray['paymentmethod']['value'];
 
 		$items = $this->modules->ShoppingCart->getCurrentCart();
@@ -451,15 +545,15 @@ class ShoppingCheckout extends WireData implements Module, ConfigurableModule
 		$order->sc_greetings = $fields['greetings']['value'];
 		$order->sc_custom1 = $fields['custom1']['value'];
 		$order->sc_custom2 = $fields['custom2']['value'];
-		$order->sc_price = $this->modules->ShoppingCart->getTotalSumFromItems($items);
+		$order->sc_price = $this->modules->ShoppingCart->getTotalSumFromItems($items, $shippingOption);
 		$order->sc_customer = $this->user;
 		$order->sc_paymentmethod = $fields['paymentmethod']['value'];
-		$order->sc_session = session_id();
+		$order->sc_session = $this->modules->ShoppingCart->getSession();
 		$order->addStatus(Page::statusUnpublished);
 
 		// Default status will be first one there is on /shop/settings/statuses/
 		$admin = $this->pages->get($this->config->adminRootPageID);
-		$order->sc_status = $this->pages->get("/{$admin->name}/shop/settings/statuses/")->children()->first();
+		$order->sc_status = $this->pages->get("/{$admin->name}/shop/settings/statuses/")->children("check_access=0")->first();
 
 		$order->save();
 
@@ -478,8 +572,18 @@ class ShoppingCheckout extends WireData implements Module, ConfigurableModule
 			$p->save();
 		}
 
+		if($shippingOption) {
+			$p = new Page();
+			$p->template = $this->templates->get('sc-order-item');
+			$p->parent = $order;
+			$p->title = $this->_("Shipping costs");
+			$p->sc_price = $shippingOption->calculateShippingCost();
+			$p->sc_qty = 1;
+			$p->save();
+		}
+
 		$this->session->remove('orderArray');
-		$this->db->query("DELETE FROM ShoppingCart WHERE session_id = '" . session_id() . "'");
+		$this->db->query("DELETE FROM ShoppingCart WHERE session_id = '" . $this->modules->ShoppingCart->getSession() . "'");
 
 		return ($order->id) ? true : false;
 	}
@@ -492,6 +596,13 @@ class ShoppingCheckout extends WireData implements Module, ConfigurableModule
 		$modules = wire('modules');
 
 		$data = array_merge(self::getDefaultData(), $data);
+
+		$field = $modules->get("InputfieldPageListSelect");
+		$field->attr('name', 'customThankyou');
+		$field->attr('value', $data['customThankyou']);
+		$field->label = "Thankyou-page where user is redirected after succesful order";
+		$field->description = 'On that page, you can customize more personal thank you notice. You get order page id from $session->orderId and can display all the details you want from the order.';
+		$fields->add($field);
 
 		$urls = $modules->get("InputfieldFieldset");
 		$urls->label = "Url segments";
@@ -594,15 +705,18 @@ class ShoppingCheckout extends WireData implements Module, ConfigurableModule
 
 		$list = $this->modules->get('ProcessList');
 
-		$shop = new Page();
-		$shop->template = $admin;
-		$shop->parent = $this->pages->get($this->config->adminRootPageID);
-		$shop->title = 'Shop';
-		$shop->name = 'shop';
-		$shop->addStatus(Page::statusHidden);
-		//$shop->process = $list;
-		$shop->save();
+		$shop = $this->pages->get("template=admin, name=shop, parent=$admin->id");
 
+		if(!$shop->id) {
+			$shop = new Page();
+			$shop->template = $admin;
+			$shop->parent = $this->pages->get($this->config->adminRootPageID);
+			$shop->title = 'Shop';
+			$shop->name = 'shop';
+			$shop->addStatus(Page::statusHidden);
+			//$shop->process = $list;
+			$shop->save();
+		}
 
 
 		if ($shop->id) {
@@ -616,71 +730,106 @@ class ShoppingCheckout extends WireData implements Module, ConfigurableModule
 		}
 
 		//shop/settings/
-		$settings = new Page();
-		$settings->template = $admin;
-		$settings->parent = $shop;
-		$settings->title = 'Shop settings';
-		$settings->name = 'settings';
-		$settings->save();
+		$settings = $this->pages->get("template=admin, name=settings, parent=$shop->id");
+		if (!$settings->id) {
+			$settings = new Page();
+			$settings->template = $admin;
+			$settings->parent = $shop;
+			$settings->title = 'Shop settings';
+			$settings->name = 'settings';
+			$settings->save();
+		}
+
 
 		//shop/settings/statuses/
-		$statuses = new Page();
-		$statuses->template = $admin;
-		$statuses->parent = $settings;
-		$statuses->title = 'Order statuses';
-		$statuses->name = 'statuses';
-		$statuses->save();
+		$statuses = $this->pages->get("template=admin, name=statuses, parent=$settings->id");
+		if (!$statuses->id) {
+			$statuses = new Page();
+			$statuses->template = $admin;
+			$statuses->parent = $settings;
+			$statuses->title = 'Order statuses';
+			$statuses->name = 'statuses';
+			$statuses->save();
+		}
+
 
 		//shop/settings/statuses/completed/
-		$p = new Page();
-		$p->template = $admin;
-		$p->parent = $statuses;
-		$p->title = 'Completed';
-		$p->name = 'completed';
-		$p->save();
+		$p = $this->pages->get("template=admin, name=completed, parent=$statuses->id");
+		if(!$p->id) {
+			$p = new Page();
+			$p->template = $admin;
+			$p->parent = $statuses;
+			$p->title = 'Completed';
+			$p->name = 'completed';
+			$p->save();
+		} else {
+			$p = '';
+		}
 
 		//shop/settings/statuses/in-progress/
-		$p = new Page();
-		$p->template = $admin;
-		$p->parent = $statuses;
-		$p->title = 'In Progress';
-		$p->name = 'in-progress';
-		$p->save();
+		$p = $this->pages->get("template=admin, name=in-progress, parent=$statuses->id");
+		if(!$p->id) {
+			$p = new Page();
+			$p->template = $admin;
+			$p->parent = $statuses;
+			$p->title = 'In Progress';
+			$p->name = 'in-progress';
+			$p->save();
+		} else {
+			$p = '';
+		}
 
 		//shop/settings/statuses/cancelled/
-		$p = new Page();
-		$p->template = $admin;
-		$p->parent = $statuses;
-		$p->title = 'Cancelled';
-		$p->name = 'cancelled';
-		$p->save();
+		$p = $this->pages->get("template=admin, name=cancelled, parent=$statuses->id");
+		if(!$p->id) {
+			$p = new Page();
+			$p->template = $admin;
+			$p->parent = $statuses;
+			$p->title = 'Cancelled';
+			$p->name = 'cancelled';
+			$p->save();
+		} else {
+			$p = '';
+		}
 
+		$oifg = $this->fieldgroups->get('sc-order-item');
+		if (!$oifg->id) {
+			$oifg = new Fieldgroup();
+			$oifg->name = 'sc-order-item';
+			$oifg->add($this->fields->get('title'));
+			$oifg->save();
+		}
 
+		$oi = $this->templates->get('sc-order-item');
+		if(!$oi->id) {
+			$oi = new Template();
+			$oi->name = 'sc-order-item';
+			$oi->fieldgroup = $oifg;
+			$oi->pageLabelField = 'title';
+			$oi->noChildren = 1;
+			$oi->flags = Template::flagSystem;
+			$oi->save();
+		}
 
-		$oifg = new Fieldgroup();
-		$oifg->name = 'sc-order-item';
-		$oifg->add($this->fields->get('title'));
-		$oifg->save();
+		$fg = $this->fieldgroups->get('sc-order-item');
+		if(!$fg->id) {
+			$fg = new Fieldgroup();
+			$fg->name = 'sc-order';
+			$fg->add($this->fields->get('title'));
+			$fg->save();
+		}
 
-		$oi = new Template();
-		$oi->name = 'sc-order-item';
-		$oi->fieldgroup = $oifg;
-		$oi->pageLabelField = 'title';
-		$oi->noChildren = 1;
-		$oi = $oi->save();
-
-		$fg = new Fieldgroup();
-		$fg->name = 'sc-order';
-		$fg->add($this->fields->get('title'));
-		$fg->save();
-
-		$t = new Template();
-		$t->name = 'sc-order';
-		$t->fieldgroup = $fg;
-		$t->pageLabelField = 'title';
-		$t->parentTemplates = array($admin->id);
-		$t->childTemplates = array($oi->id);
-		$t = $t->save();
+		$t = $this->templates->get('sc-order');
+		if(!$t->id) {
+			$t = new Template();
+			$t->name = 'sc-order';
+			$t->fieldgroup = $fg;
+			$t->pageLabelField = 'title';
+			$t->parentTemplates = array($admin->id);
+			$t->childTemplates = array($oi->id);
+			$t->flags = Template::flagSystem;
+			$t->save();
+		}
 
 		$f = $this->fields->get('sc_price');
 		if (!$f) {
@@ -715,6 +864,7 @@ class ShoppingCheckout extends WireData implements Module, ConfigurableModule
 			$f->label = 'Product';
 			$f->derefAsPage = FieldtypePage::derefAsPageOrNullPage;
 			$f->inputfield = 'InputfieldPageListSelect';
+			$f->flags = Field::flagSystem | Field::flagPermanent;
 			$f->save();
 		}
 		$oifg->add($f);
@@ -729,6 +879,7 @@ class ShoppingCheckout extends WireData implements Module, ConfigurableModule
 			$f->derefAsPage = FieldtypePage::derefAsPageOrFalse;
 			$f->parent_id = $this->config->usersPageID;
 			$f->template_id = $this->config->userTemplateID;
+			$f->flags = Field::flagSystem | Field::flagPermanent;
 			$f->save();
 		}
 		$fg->add($f);
@@ -742,6 +893,7 @@ class ShoppingCheckout extends WireData implements Module, ConfigurableModule
 			$f->inputfield = 'InputfieldSelect';
 			$f->derefAsPage = FieldtypePage::derefAsPageOrFalse;
 			$f->parent_id = $statuses->id;
+			$f->flags = Field::flagSystem | Field::flagPermanent;
 			$f->save();
 		}
 		$fg->add($f);
@@ -752,6 +904,7 @@ class ShoppingCheckout extends WireData implements Module, ConfigurableModule
 			$f->type = $this->modules->get("FieldtypeText");
 			$f->name = 'sc_firstname';
 			$f->label = 'First name';
+			$f->flags = Field::flagSystem | Field::flagPermanent;
 			$f->save();
 		}
 		$fg->add($f);
@@ -762,6 +915,7 @@ class ShoppingCheckout extends WireData implements Module, ConfigurableModule
 			$f->type = $this->modules->get("FieldtypeText");
 			$f->name = 'sc_lastname';
 			$f->label = 'Last name';
+			$f->flags = Field::flagSystem | Field::flagPermanent;
 			$f->save();
 		}
 		$fg->add($f);
@@ -772,6 +926,7 @@ class ShoppingCheckout extends WireData implements Module, ConfigurableModule
 			$f->type = $this->modules->get("FieldtypeText");
 			$f->name = 'sc_streetaddress';
 			$f->label = 'Street address';
+			$f->flags = Field::flagSystem | Field::flagPermanent;
 			$f->save();
 		}
 		$fg->add($f);
@@ -782,6 +937,7 @@ class ShoppingCheckout extends WireData implements Module, ConfigurableModule
 			$f->type = $this->modules->get("FieldtypeText");
 			$f->name = 'sc_zip';
 			$f->label = 'ZIP / Postal code';
+			$f->flags = Field::flagSystem | Field::flagPermanent;
 			$f->save();
 		}
 		$fg->add($f);
@@ -792,6 +948,7 @@ class ShoppingCheckout extends WireData implements Module, ConfigurableModule
 			$f->type = $this->modules->get("FieldtypeText");
 			$f->name = 'sc_city';
 			$f->label = 'City';
+			$f->flags = Field::flagSystem | Field::flagPermanent;
 			$f->save();
 		}
 		$fg->add($f);
@@ -802,6 +959,7 @@ class ShoppingCheckout extends WireData implements Module, ConfigurableModule
 			$f->type = $this->modules->get("FieldtypeText");
 			$f->name = 'sc_country';
 			$f->label = 'Country';
+			$f->flags = Field::flagSystem | Field::flagPermanent;
 			$f->save();
 		}
 		$fg->add($f);
@@ -812,6 +970,7 @@ class ShoppingCheckout extends WireData implements Module, ConfigurableModule
 			$f->type = $this->modules->get("FieldtypeTextarea");
 			$f->name = 'sc_greetings';
 			$f->label = 'Greetings for shop';
+			$f->flags = Field::flagSystem | Field::flagPermanent;
 			$f->save();
 		}
 		$fg->add($f);
@@ -822,6 +981,7 @@ class ShoppingCheckout extends WireData implements Module, ConfigurableModule
 			$f->type = $this->modules->get("FieldtypeTextarea");
 			$f->name = 'sc_custom1';
 			$f->label = 'Custom field #1';
+			$f->flags = Field::flagSystem | Field::flagPermanent;
 			$f->save();
 		}
 		$fg->add($f);
@@ -832,6 +992,7 @@ class ShoppingCheckout extends WireData implements Module, ConfigurableModule
 			$f->type = $this->modules->get("FieldtypeTextarea");
 			$f->name = 'sc_custom2';
 			$f->label = 'Custom field #2';
+			$f->flags = Field::flagSystem | Field::flagPermanent;
 			$f->save();
 		}
 		$fg->add($f);
@@ -844,6 +1005,7 @@ class ShoppingCheckout extends WireData implements Module, ConfigurableModule
 			$f->label = 'Paid';
 			$f->dateOutputFormat = $this->config->dateFormat;
 			$f->dateInputFormat = $this->config->dateFormat;
+			$f->flags = Field::flagSystem | Field::flagPermanent;
 			$f->save();
 		}
 		$fg->add($f);
@@ -856,6 +1018,7 @@ class ShoppingCheckout extends WireData implements Module, ConfigurableModule
 			$f->label = 'Processed';
 			$f->dateOutputFormat = $this->config->dateFormat;
 			$f->dateInputFormat = $this->config->dateFormat;
+			$f->flags = Field::flagSystem | Field::flagPermanent;
 			$f->save();
 		}
 		$fg->add($f);
@@ -866,6 +1029,18 @@ class ShoppingCheckout extends WireData implements Module, ConfigurableModule
 			$f->type = $this->modules->get("FieldtypeText");
 			$f->name = 'sc_paymentmethod';
 			$f->label = 'Payment Method used';
+			$f->flags = Field::flagSystem | Field::flagPermanent;
+			$f->save();
+		}
+		$fg->add($f);
+		$fg->save();
+
+		if (!$this->fields->get('sc_paymentid')) {
+			$f = new Field();
+			$f->type = $this->modules->get("FieldtypeText");
+			$f->name = 'sc_paymentid';
+			$f->label = 'Payment ID returned from payment processor';
+			$f->flags = Field::flagSystem | Field::flagPermanent;
 			$f->save();
 		}
 		$fg->add($f);
@@ -876,6 +1051,7 @@ class ShoppingCheckout extends WireData implements Module, ConfigurableModule
 			$f->type = $this->modules->get("FieldtypeText");
 			$f->name = 'sc_session';
 			$f->label = 'Session ID';
+			$f->flags = Field::flagSystem | Field::flagPermanent;
 			$f->save();
 		}
 		$fg->add($f);
@@ -890,25 +1066,35 @@ class ShoppingCheckout extends WireData implements Module, ConfigurableModule
 		$oi->save();
 
 
-		$fg = new Fieldgroup();
-		$fg->name = 'sc-checkout';
-		$fg->add($this->fields->get('title'));
-		$fg->save();
+		$fg = $this->fieldgroups->get('sc-checkout');
+		if(!$fg->id) {
+			$fg = new Fieldgroup();
+			$fg->name = 'sc-checkout';
+			$fg->add($this->fields->get('title'));
+			$fg->save();
+		}
 
-		$t = new Template();
-		$t->name = 'sc-checkout';
-		$t->fieldgroup = $fg;
-		$t->urlSegments = 1;
-		$t->pageLabelField = 'title';
-		$t = $t->save();
+		$t = $this->templates->get('sc-checkout');
+		if(!$t->id) {
+			$t = new Template();
+			$t->name = 'sc-checkout';
+			$t->fieldgroup = $fg;
+			$t->urlSegments = 1;
+			$t->pageLabelField = 'title';
+			$t->flags = Template::flagSystem;
+			$t = $t->save();
+		}
 
-		$p = new Page();
-		$p->template = $t;
-		$p->parent = $this->pages->get(1);
-		$p->title = 'Checkout';
-		$p->name = 'checkout';
-		$p->addStatus(Page::statusHidden);
-		$p->save();
+		$p = $this->pages->get("template=$t");
+		if(!$p->id) {
+			$p = new Page();
+			$p->template = $t;
+			$p->parent = $this->pages->get(1);
+			$p->title = 'Checkout';
+			$p->addStatus(Page::statusHidden);
+			$p->save();
+		}
+
 
 	}
 
@@ -921,24 +1107,39 @@ class ShoppingCheckout extends WireData implements Module, ConfigurableModule
 		$p = $this->pages->get('template=admin, name=shop, include=all');
 		if ($p->id) $this->pages->delete($p, true); // Recursive delete
 
-		if ($this->templates->get('sc-checkout')) {
-			$this->templates->delete($this->templates->get('sc-checkout'));
-			$this->fieldgroups->delete($this->fieldgroups->get('sc-checkout'));
+		$t = $this->templates->get('sc-checkout');
+		if ($t->id) {
+			$t->flags = Template::flagSystemOverride;
+			$t->flags = 0;
+			$this->templates->delete($t);
+			$fg = $this->fieldgroups->get('sc-checkout');
+			if ($fg->id) $this->fieldgroups->delete($fg);
 		}
 
-		if ($this->templates->get('sc-order')) {
-			$this->templates->delete($this->templates->get('sc-order'));
-			$this->fieldgroups->delete($this->fieldgroups->get('sc-order'));
+		$to = $this->templates->get('sc-order');
+		if ($to->id) {
+			$to->flags = Template::flagSystemOverride;
+			$to->flags = 0;
+			$this->templates->delete($to);
+			$fg = $this->fieldgroups->get('sc-order');
+			if ($fg->id) $this->fieldgroups->delete($fg);
 		}
 
-		if ($this->templates->get('sc-order-item')) {
-			$this->templates->delete($this->templates->get('sc-order-item'));
-			$this->fieldgroups->delete($this->fieldgroups->get('sc-order-item'));
+		$toi = $this->templates->get('sc-order-item');
+		if ($toi->id) {
+			$toi->flags = Template::flagSystemOverride;
+			$toi->flags = 0;
+			$this->templates->delete($toi);
+			$fg = $this->fieldgroups->get('sc-order-item');
+			if ($fg->id) $this->fieldgroups->delete($fg);
 		}
+
 
 		// Remove all other sc_fields but sc_price
 		$scFields = $this->fields->find("name^=sc_,name!=sc_price,name!=sc_qty");
 		foreach($scFields as $f) {
+			$f->flags = Field::flagSystemOverride;
+			$f->flags = 0;
 			$this->fields->delete($f);
 		}
 	}

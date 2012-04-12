@@ -1,13 +1,14 @@
 <?php
 
 abstract class PaymentAbstract extends WireData implements Module {
-		
+
 	public $completedUrl;
-	
+	public $title;
+
 	public function init() {
-	
+
 	}
-	
+
 	public function __construct() {
 		$data = $this->modules->getModuleConfigData('ShoppingCheckout');
 		if (!isset($data['completedUrlSegment'])) {
@@ -18,7 +19,7 @@ abstract class PaymentAbstract extends WireData implements Module {
 		$this->currentUrl = $page->url . $data['paymentUrlSegment'] . '/';
 		$this->completedUrl = $page->url . $data['completedUrlSegment'] . '/';
 	}
-	
+
 	/*
 	 *
 	 * returns nothing. You should edit and save $order page. If payment was succesful,
@@ -36,5 +37,5 @@ abstract class PaymentAbstract extends WireData implements Module {
 	 *
 	 */
 	abstract function processPayment(Page $order);
-	
+
 }

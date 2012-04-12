@@ -1,0 +1,41 @@
+<?php
+
+require_once(dirname(__FILE__) . '/ShippingAbstract.php');
+
+class ShippingFixedCost extends ShippingAbstract implements ConfigurableModule {
+
+    public static function getModuleInfo()
+	{
+		return array(
+			'title' => 'Fixed cost shipping',
+			'version' => 001,
+			'summary' => 'Simple shipping option, which sets fixed shipping cost for all orders.',
+			'singular' => false,
+			'autoload' => false
+		);
+	}
+    public function init() {
+		$this->title = $this->_("Fixed shipping cost");
+	}
+
+    public function calculateShippingCost() {
+		return $this->shippingCost;
+	}
+
+	static public function getModuleConfigInputfields(Array $data) {
+		// this is a container for fields, basically like a fieldset
+		$fields = new InputfieldWrapper();
+
+		// since this is a static function, we can't use $this->modules, so get them from the global wire() function
+		$modules = wire('modules');
+
+		$field = $modules->get("InputfieldFloat");
+		$field->attr('name', 'shippingCost');
+		$field->attr('value', $data['shippingCost']);
+		$field->label = "Shipping cost for all orders";
+		$fields->add($field);
+
+
+		return $fields;
+	}
+}

@@ -1,0 +1,108 @@
+<?php
+
+class ShoppingStepsMarkup extends WireData implements Module, ConfigurableModule
+{
+	public static function getModuleInfo()
+	{
+		return array(
+			'title' => 'Shopping Steps Markup',
+			'version' => 001,
+			'summary' => 'Renders shopping steps as a breadcrumb',
+			'singular' => false,
+			'autoload' => false,
+			'requires' => array(
+				"ShoppingCart",
+				"ShoppingCheckout"
+			)
+		);
+	}
+
+	public function init()
+	{
+	}
+
+	public function render($id = 'sc_checkout_breadcrumb') {
+
+
+		$checkoutModule = $this->modules->get('ShoppingCheckout');
+		$checkoutPage = $this->pages->get('template=sc-checkout');
+		if ($this->cartPage) $cartPage = $this->pages->get($this->cartPage);
+		else $cartPage = new NullPage();
+
+		if ($this->input->urlSegment1) $step = $this->input->urlSegment1;
+		else if ($this->page->id === $this->cartPage) $step = 'shoppingCart';
+		else $step = 'information';
+
+		$anchors = true;
+		if ($step == $checkoutModule->completedUrlSegment || $step == $checkoutModule->paymentUrlSegment) {
+			$anchors = false;
+		}
+
+		$out = "<ol id='$id'>";
+
+		if ($step == "shoppingCart") {
+			$class = "sc_active sc_shoppingcart";
+			$anchors = false;
+		} else {
+			$class = "sc_shoppingcart";
+		}
+		$out .= "<li class='$class'><p>";
+		if ($anchors) $out .= "<a href='{$cartPage->url}'>";
+		$out .= $this->_('Shopping cart');
+		if ($anchors) $out .= "</a>";
+		$out .= "</p></li>";
+
+
+		if ($step == "information") {
+			$class = "sc_active sc_information";
+			$anchors = false;
+		} else {
+			$class = "sc_information";
+		}
+
+		$out .= "<li class='$class'><p>";
+		if ($anchors) $out .= "<a href='{$checkoutPage->url}'>";
+		$out .= $this->_('My information');
+		if ($anchors) $out .= "</a>";
+		$out .= "</p></li>";
+
+		$class = ($step == $checkoutModule->confirmationUrlSegment) ? "sc_active sc_confirmation" : "sc_confirmation";
+		$out .= "<li class='$class'><p>". $this->_('Place order') ."</p></li>";
+
+		$class = ($step == $checkoutModule->paymentUrlSegment) ? "sc_active sc_payment" : "sc_payment";
+		$out .= "<li class='$class'><p>". $this->_('Pay order') ."</p></li>";
+
+		$class = ($step == $checkoutModule->completedUrlSegment) ? "sc_active sc_completed" : "sc_completed";
+		$out .= "<li class='$class'><p>". $this->_('Completed') ."</p></li>";
+
+		$out .= "</ol>";
+		return $out;
+	}
+
+
+	static public function getModuleConfigInputfields(Array $data) {
+		// this is a container for fields, basically like a fieldset
+		$fields = new InputfieldWrapper();
+
+		// since this is a static function, we can't use $this->modules, so get them from the global wire() function
+		$modules = wire('modules');
+
+
+		$field = $modules->get("InputfieldPageListSelect");
+		$field->attr('name', 'cartPage');
+		$field->attr('value', $data['cartPage']);
+		$field->label = "Location of shopping cart page";
+		$field->description = "If you leave this empty, shopping cart page will not be visible on shopping steps breadcrumb.";
+		$fields->add($field);
+
+		return $fields;
+	}
+
+	public function install() {
+
+	}
+
+	public function uninstall() {
+
+	}
+}

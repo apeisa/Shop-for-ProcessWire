@@ -3,7 +3,7 @@
 require_once(dirname(__FILE__) . '/PaymentAbstract.php');
 
 class PaymentSimpleExample extends PaymentAbstract {
-	
+
     public static function getModuleInfo()
 	{
 		return array(
@@ -15,9 +15,9 @@ class PaymentSimpleExample extends PaymentAbstract {
 		);
 	}
     public function init() {
-		
+		$this->title = $this->_("Simple Payment Example");
 	}
-	
+
 	/*
 	 *
 	 * returns nothing. You should edit and save $order page. If payment was succesful,
@@ -35,20 +35,20 @@ class PaymentSimpleExample extends PaymentAbstract {
 	 *
 	 */
     public function processPayment(Page $order) {
-		
+
 		/*
 		 * If you need to know how to access order details, please look for PaymentExample.module
 		 */
-		
+
 		$order->setOutputFormatting(false);
 		$order->sc_paid = time(); // Set order as paid
 		$order->removeStatus(Page::statusUnpublished); // Set order as finished
 		$order->save();
-		
+
 		/*
 		 * You always end with redirect to $this->completedUrl;
 		 */
-		$this->session->redirect($this->completedUrl); 
-	
+		$this->session->redirect($this->completedUrl);
+
     }
 }
