@@ -31,7 +31,7 @@ class ShoppingOrdersManagement extends Process {
 		$table->setEncodeEntities(false);
 		$table->headerRow(array($this->_('Customer'), $this->_('Status'), $this->_('Total Sum'), $this->_('Time')));
 
-		$orders = $this->pages->find('template=sc-order,limit=3,sort=-created');
+		$orders = $this->pages->find('template=sc-order,limit=20,sort=-created');
 
 		if($orders->count() == 0) {
 			$out .= $this->_("No orders yet");
