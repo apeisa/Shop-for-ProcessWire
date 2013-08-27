@@ -6,7 +6,7 @@ class ShoppingCheckout extends WireData implements Module, ConfigurableModule
 	{
 		return array(
 			'title' => 'Shopping Checkout',
-			'version' => 001,
+			'version' => 002,
 			'summary' => 'Handles checkout process, order saving etc. Main module for PW Shop',
 			'singular' => false,
 			'autoload' => false,
@@ -120,6 +120,14 @@ class ShoppingCheckout extends WireData implements Module, ConfigurableModule
 
 	public function init()
 	{
+		// update from 001 to 002 check added missing sc_phone field
+		$info = self::getModuleInfo();
+		$moduleVersion = $info['version'];
+		if($moduleVersion > 1) {
+			if (!$this->fields->get('sc_phone')) {
+				$this->updateAddPhoneField();
+			}
+		}
 	}
 
 	public function ready()
@@ -226,7 +234,8 @@ class ShoppingCheckout extends WireData implements Module, ConfigurableModule
 			$shippingOption = NULL;
 		}
 
-		$out  = $this->modules->ShoppingCart->renderCart(true, $shippingOption);
+		$out = "<h2>" . $this->_('Approve details of your order') . "</h2>";
+		$out .= $this->modules->ShoppingCart->renderCart(true, $shippingOption);
 		$out .= "<form action='./' method='post'>";
 
 		if ($shippingOption) {
@@ -297,7 +306,7 @@ class ShoppingCheckout extends WireData implements Module, ConfigurableModule
 		$shoppingCartModule = $this->modules->get("ShoppingCart");
 		$shippingModules = $this->modules->find('className^=Shipping');
 		if ($shippingModules->count() > 0) {
-			$out .= "<p class='required'><label for='shippingoption'>" . $this->_("Choose shipping:") . " <span class='regstar'>*</span></label>";
+			$out .= "<p class='required'><label for='shippingoption'>" . $this->_("Choose shipping:") . " <span class='reqstar'>*</span></label>";
 			$out .= "<select name='shippingoption'>";
 			foreach($shippingModules as $module) {
 				$cost = $module->calculateShippingCost();
@@ -324,7 +333,7 @@ class ShoppingCheckout extends WireData implements Module, ConfigurableModule
 		$out = "";
 		$paymentModules = $this->modules->find('className^=Payment');
 		if ($paymentModules->count() > 0) {
-			$out .= "<p class='required'><label for='paymentmethod'>" . $this->_("Choose payment method:") . " <span class='regstar'>*</span></label>";
+			$out .= "<p class='required'><label for='paymentmethod'>" . $this->_("Choose payment method:") . " <span class='reqstar'>*</span></label>";
 			$out .= "<select name='paymentmethod'>";
 			foreach($paymentModules as $module) {
 				$info = $module->getModuleInfo();
@@ -366,6 +375,7 @@ class ShoppingCheckout extends WireData implements Module, ConfigurableModule
 	public function renderInformationFormItems($viewOnly = false) {
 
 		$out = '';
+		$errors = false;
 		if (empty($this->session->orderArray['fields'])) {
 			return;
 		}
@@ -378,7 +388,6 @@ class ShoppingCheckout extends WireData implements Module, ConfigurableModule
 				$class .= (isset($field['error'])) ? ' error' : '';
 
 
-
 				if (strlen($field['value']) > 0 || !$viewOnly) {
 					$out .= "<p class='$key $class'>";
 					$out .= "<label for='$key'>";
@@ -386,7 +395,10 @@ class ShoppingCheckout extends WireData implements Module, ConfigurableModule
 					if ($this->$reqKey) $out .= "<span class='reqstar'>*</span>";
 					$out .= "</label>";
 				}
-				if (isset($field['error'])) $out .= "<span class='errormsg'>". $field['error'] ."</span>";
+				if (isset($field['error'])) {
+					$out .= "<span class='errormsg'>". $field['error'] ."</span>";
+					$errors = true;
+				}
 
 				if (!$viewOnly) {
 					switch($field['type']) {
@@ -394,7 +406,7 @@ class ShoppingCheckout extends WireData implements Module, ConfigurableModule
 							$out .= "<textarea class='$class' name='$key'>". $field['value'] ."</textarea>";
 							break;
 						default:
-							$out .= "<input class='$class' name='$key' value='". $field['value'] ."' />";
+							$out .= "<input type='text' class='$class' name='$key' value='". $field['value'] ."' />";
 					}
 					$out .= "</p>";
 				}
@@ -407,6 +419,7 @@ class ShoppingCheckout extends WireData implements Module, ConfigurableModule
 			}
 		}
 
+		if($errors) $out = "<p class='error errormsg'>" . $this->_("The formular contains errors, please check your informations.") . "</p>" . $out;
 		return $out;
 	}
 
@@ -542,6 +555,7 @@ class ShoppingCheckout extends WireData implements Module, ConfigurableModule
 		$order->sc_city = $fields['city']['value'];
 		$order->sc_zip = $fields['zip']['value'];
 		$order->sc_country = $fields['country']['value'];
+		$order->sc_phone = $fields['phone']['value'];
 		$order->sc_greetings = $fields['greetings']['value'];
 		$order->sc_custom1 = $fields['custom1']['value'];
 		$order->sc_custom2 = $fields['custom2']['value'];
@@ -965,6 +979,17 @@ class ShoppingCheckout extends WireData implements Module, ConfigurableModule
 		$fg->add($f);
 		$fg->save();
 
+		if (!$this->fields->get('sc_phone')) {
+			$f = new Field();
+			$f->type = $this->modules->get("FieldtypeText");
+			$f->name = 'sc_phone';
+			$f->label = 'Phone';
+			$f->flags = Field::flagSystem | Field::flagPermanent;
+			$f->save();
+		}
+		$fg->add($f);
+		$fg->save();
+
 		if (!$this->fields->get('sc_greetings')) {
 			$f = new Field();
 			$f->type = $this->modules->get("FieldtypeTextarea");
@@ -1142,5 +1167,23 @@ class ShoppingCheckout extends WireData implements Module, ConfigurableModule
 			$f->flags = 0;
 			$this->fields->delete($f);
 		}
+	}
+
+	/**
+	 * adds missing sc_phone field in v001
+	 */
+	protected function updateAddPhoneField() {
+
+		$f = new Field();
+		$f->type = $this->modules->get("FieldtypeText");
+		$f->name = 'sc_phone';
+		$f->label = 'Phone';
+		$f->flags = Field::flagSystem | Field::flagPermanent;
+		$f->save();
+
+		$fg = $this->fieldgroups->get('sc-order-item');
+		$fg->add($f);
+		$fg->save();
+		$this->message("Created and added missing sc_phone field in ShoppinCheckout.module.");
 	}
 }
