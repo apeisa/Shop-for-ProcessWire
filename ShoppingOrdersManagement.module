@@ -48,6 +48,8 @@ class ShoppingOrdersManagement extends Process {
 				));
 			}
 			$out .= $table->render();
+			$pager = $orders->getTotal() > count($orders) ? $orders->renderPager() : '';
+			$out .= $pager;
 		}
 		$out .= "</div>";
 
