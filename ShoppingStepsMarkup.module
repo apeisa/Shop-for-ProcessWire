@@ -46,11 +46,14 @@ class ShoppingStepsMarkup extends WireData implements Module, ConfigurableModule
 		} else {
 			$class = "sc_shoppingcart";
 		}
-		$out .= "<li class='$class'><p>";
-		if ($anchors) $out .= "<a href='{$cartPage->url}'>";
-		$out .= $this->_('Shopping cart');
-		if ($anchors) $out .= "</a>";
-		$out .= "</p></li>";
+
+		if($cartPage->id) {
+			$out .= "<li class='$class'><p>";
+			if ($anchors) $out .= "<a href='{$cartPage->url}'>";
+			$out .= $this->_('Shopping cart');
+			if ($anchors) $out .= "</a>";
+			$out .= "</p></li>";
+		}
 
 
 		if ($step == "information") {

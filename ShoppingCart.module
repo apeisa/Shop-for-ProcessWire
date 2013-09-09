@@ -204,7 +204,7 @@ class ShoppingCart extends WireData implements Module, ConfigurableModule
 		$out .= "<table>";
 		$out .= "<tr><th>" . $this->_('Product') . "</th>";
 		$out .= "<th>" . $this->_('Quantity') . "</th>";
-		$out .= "<th>" . $this->_('Price') . "</th>";
+		$out .= "<th>" . $this->_('Subtotal') . "</th>";
 		if (!$viewOnly) $out .= "<th>" . $this->_('Remove?') . "</th>";
 		$out .= "</tr>";
 
@@ -218,12 +218,10 @@ class ShoppingCart extends WireData implements Module, ConfigurableModule
 			if (!$viewOnly)	{
 				$out .= "<td><input data-price='" . $product->sc_price . "' name='items[{$product->id}]' type='number' size='2' value='" . (int) $item->qty . "'/></td>";
 			} else {
-				$out .= "<td>" . (int) $item->qty . "</td>";
+				$out .= "<td class='sc_number'>" . (int) $item->qty . "</td>";
 			}
 
-
-
-			$out .= "<td>" . $this->renderPrice($total_price) . "</td>";
+			$out .= "<td class='sc_number'>" . $this->renderPrice($total_price) . "</td>";
 			if (!$viewOnly) $out .= "<td><a class='remove' href='./?sc_remove=" . $product->id . "'>" . $this->_("Remove") . "</a></td>";
 			$out .= "</tr>";
 		}
@@ -232,11 +230,15 @@ class ShoppingCart extends WireData implements Module, ConfigurableModule
 			$shippingCost = $shippingModule->calculateShippingCost();
 			$total_sum = $total_sum + $shippingCost;
 			$shippingCost = $this->renderPrice($shippingCost);
-			$out .= "<tr class='shippingRow'><td colspan='2'>". $this->_("Shipping costs") ."</td><td>$shippingCost</td></tr>";
+			$out .= "<tr class='shippingRow'><td colspan='2'>". $this->_("Shipping costs") ."</td><td class='sc_number'>$shippingCost</td></tr>";
 		}
 
-		$out .= "<tr class='final'><td>" . $this->_("Total:") . "</td><td>&nbsp;</td><td id='total_sum'>". $this->renderPrice($total_sum) ."</td><td></td></tr>";
+		$out .= "<tr class='final'><td colspan='2'>" . $this->_("Total:") . "</td><td id='total_sum'  class='sc_number'>". $this->renderPrice($total_sum) ."</td>";
+		if (!$viewOnly) $out .= "<td>&nbsp;</td>";
+		$out .= "</tr>";
+
 		$out .= "</table>";
+
 		if (!$viewOnly) {
 			$out .= "<input type='submit' class='sc_update submit' name='sc_update' value=' " . $this->_("Update Cart") . "' />";
 			if ($this->modules->isInstalled('ShoppingCheckout')) $out .= "<input type='submit' class='sc_checkout submit' name='sc_checkout' value=' " . $this->_("Continue to checkout") . "' />";
@@ -378,7 +380,7 @@ class ShoppingCart extends WireData implements Module, ConfigurableModule
 		if(isset($_COOKIE['pwshopSession']))
 			return sha1($_COOKIE['pwshopSession']);
 
-		setcookie("pwshopSession", session_id(), time()+60*60*24*7); // 7 days cookie
+		setcookie("pwshopSession", session_id(), time()+60*60*24*7, "/"); // 7 days cookie
 		return sha1(session_id());
 	}
 
