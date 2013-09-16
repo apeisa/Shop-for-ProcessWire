@@ -209,9 +209,17 @@ class ShoppingCart extends WireData implements Module, ConfigurableModule
 		$out .= "</tr>";
 
 		foreach ($items as $item) {
+
+
 			// get product price from actual product page
 			$product     = $this->pages->get($item->product_id);
 			$total_price = $item->qty * $product->sc_price;
+
+			// If the product is repeater, we assume it is a product variation. Se let's prepend the product title before variation
+			if (strpos($product->template->name, "repeater_") === 0) {
+				$parentProduct = wire('pages')->get( (int) substr($product->parent->name, 9));
+				if ($parentProduct->id) $product->title = $parentProduct->title . ": " . $product->title;	
+			} 
 
 			$out .= "<tr>";
 			$out .= "<td>{$product->title}</td>";

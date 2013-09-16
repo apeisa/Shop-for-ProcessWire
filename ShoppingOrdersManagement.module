@@ -29,7 +29,13 @@ class ShoppingOrdersManagement extends Process {
 
 		$table = $this->modules->get("MarkupAdminDataTable");
 		$table->setEncodeEntities(false);
-		$table->headerRow(array($this->_('Customer'), $this->_('Status'), $this->_('Total Sum'), $this->_('Time')));
+		$table->headerRow(array(
+								$this->_('Customer'),
+								$this->_('Processed'),
+								$this->_('Paid'),
+								$this->_('Status'),
+								$this->_('Total Sum'),
+								$this->_('Time')));
 
 		$orders = $this->pages->find('template=sc-order,limit=20,sort=-created');
 
@@ -38,10 +44,23 @@ class ShoppingOrdersManagement extends Process {
 		} else {
 
 			foreach($orders as $order) {
+				if ($order->sc_processed == 0) {
+					$processed = $this->_('Unprocessed');
+				} else {
+					$processed = date(wire('config')->dateFormat, $order->sc_processed);
+				}
+
+				if ($order->sc_paid == 0) {
+					$paid = $this->_('Not paid');
+				} else {
+					$paid = date(wire('config')->dateFormat, $order->sc_paid);
+				}
 
 				 // output in table rows with edit link and delete checkbox?
 				 $table->row(array(
 					 $order->sc_firstname . " " . $order->sc_lastname => "edit/?id={$order->id}",
+					 $processed,
+					 $paid,
 					 $order->sc_status->title,
 					 $order->sc_price . ' &euro;',
 					 date($this->config->dateFormat,$order->created)
@@ -52,7 +71,7 @@ class ShoppingOrdersManagement extends Process {
 			$out .= $pager;
 		}
 		$out .= "</div>";
-
+/*
 		$out .= "<div id='active_carts'>";
 		$out .= "<h2>". $this->_("Active carts:") ."</h2>";
 
@@ -74,7 +93,7 @@ class ShoppingOrdersManagement extends Process {
 
 		$out .= $table->render();
 		$out .= "</div>";
-
+ */
 
 
 		// Is there clean way to add button to right side?
@@ -111,14 +130,43 @@ class ShoppingOrdersManagement extends Process {
 			$this->session->redirect("./?id=$id");
 		}
 
+		$out .= "<h2><span>{$order->sc_status->title}</span> #{$id}</h2>";
 
-		$out .= "<div class='sc-header'><h2><span>{$order->sc_status->title}</span> #{$id}</h2></div>";
+		$out .= "<div class='container-1of3'>";
 
 		$out .= "<div class='customer'><p><b>" .
 				$order->sc_firstname . " ".
 				$order->sc_lastname ."</b></p><p>".
 				$order->sc_streetaddress . "<br />".
-				$order->sc_city."</p></div>";
+				$order->sc_zip . " " . $order->sc_city."</p>".
+				"<p>$order->sc_phone<br />$order->email</p>".
+				"</div>";
+
+		$out .= "</div>";
+
+		$co = $this->modules->get('ShoppingCheckout');
+
+		if ($order->sc_custom1 || $order->sc_custom2) {
+			$out .= "<div class='container-2of3'>";
+			if ($order->sc_custom1) {
+				$out .= "<h3>$co->custom1CustomLabel</h3>";
+				$out .= "<p>$order->sc_custom1</p>";
+			}
+			if ($order->sc_custom2) {
+				$out .= "<h3>$co->custom2CustomLabel</h3>";
+				$out .= "<p>$order->sc_custom2</p>";
+			}
+			$out .= "</div>";
+		}
+
+		$co = $this->modules->get('ShoppingCheckout');
+		$out .= "<div class='container-3of3'>";
+		if ($order->sc_greetings) {
+				$out .= "<h3>" . __('Details about my order', $co) . "</h3>";
+				$out .= "<div id='#sc_greetings'>$order->sc_greetings</div>";
+		}
+
+		$out .= "</div>"; // order-info-2 ends
 
 
 		$table = $this->modules->get("MarkupAdminDataTable");
@@ -162,7 +210,7 @@ class ShoppingOrdersManagement extends Process {
 
 
 		if($order->sc_paid == 0) {
-			$out .= "<div id='paid_container' class='block'><h3>". $this->_("Customer hasn't paid this order yet") ."</h3>";
+			$out .= "<div id='paid_container' class='container-1of2'><h3>". $this->_("Customer hasn't paid this order yet") ."</h3>";
 			$out .= "<p class='description'>". $this->_("Payment method: ") . "<b>" . $order->sc_paymentmethod . "</b><br/>" . $this->_("Mark this paid after you have received the payment.") . "</p>";
 
 			$form = $this->modules->get('InputfieldForm');
@@ -177,13 +225,13 @@ class ShoppingOrdersManagement extends Process {
 			$out .= $form->render();
 			$out .= "</div>";
 		} else {
-			$out .= "<div id='paid_container' class='block'><h3>". $this->_("This order has been paid") ."</h3>";
+			$out .= "<div id='paid_container' class='container-1of2'><h3>". $this->_("This order has been paid") ."</h3>";
 			$out .= "<p class='description'>". $this->_("Payment method: ") . "<b>" . $order->sc_paymentmethod . "</b><br/>" . $this->_("Date of payment received: ") . date($this->config->dateFormat,$order->sc_paid) . "</p>";
 			$out .= "</div>";
 		}
 
 		if ($order->sc_processed == 0) {
-			$out .= "<div id='processed_container' class='block'><h3>". $this->_("This order hasn't been processed yet.") ."</h3>";
+			$out .= "<div id='processed_container' class='container-2of2'><h3>". $this->_("This order hasn't been processed yet.") ."</h3>";
 			$out .= "<p class='description'>" .  $this->_("Mark this processed after you have delivered the goods.") . "</p>";
 			$form = $this->modules->get('InputfieldForm');
 			$form->attr('action', './?id=' . $id);
@@ -198,7 +246,7 @@ class ShoppingOrdersManagement extends Process {
 			$out .= "</div>";
 
 		} else {
-			$out .= "<div id='processed_container' class='block'><h3>". $this->_("This order has been processed.") ."</h3>";
+			$out .= "<div id='processed_container' class='container-2of2'><h3>". $this->_("This order has been processed.") ."</h3>";
 			$out .= "<p class='description'>" .  $this->_("This order has been marked processed on: ") . date($this->config->dateFormat,$order->sc_processed) . "</p>";
 			$out .= "</div>";
 		}

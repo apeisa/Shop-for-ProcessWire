@@ -180,11 +180,11 @@ class ShoppingCheckout extends WireData implements Module, ConfigurableModule
 			} else {
 				$this->session->redirect("./{$this->paymentUrlSegment}/");
 			}
-
 		}
 
-		if ($this->modules->ShoppingCart->getNumberOfItems() == 0)
+		if ($this->modules->get('ShoppingCart')->getNumberOfItems() === 0) {
 			return "<p>" . $this->_("Your shopping cart is empty.") . "</p>";
+		}
 
 		if (!$this->input->post->submit) {
 			$this->validateInformation(false);
@@ -505,10 +505,7 @@ class ShoppingCheckout extends WireData implements Module, ConfigurableModule
 			$this->session->set('orderArray', $orderArray);
 		}
 
-
 		if (!isset($this->session->orderArray['valid'])) $this->session->set('orderArray', $orderArray);
-
-
 
 		return $orderArray;
 
@@ -530,6 +527,7 @@ class ShoppingCheckout extends WireData implements Module, ConfigurableModule
 			$fields['shippingoption']['value'] = $this->session->orderArray['shippingoption']['value'];
 			$shippingOption = $this->modules->get($this->session->orderArray['shippingoption']['value']);
 		} else {
+			$fields['shippingoption']['value'] = '';
 			$shippingOption = NULL;
 		}
 
@@ -562,6 +560,7 @@ class ShoppingCheckout extends WireData implements Module, ConfigurableModule
 		$order->sc_price = $this->modules->ShoppingCart->getTotalSumFromItems($items, $shippingOption);
 		$order->sc_customer = $this->user;
 		$order->sc_paymentmethod = $fields['paymentmethod']['value'];
+		$order->sc_shippingoption = $fields['shippingoption']['value'];
 		$order->sc_session = $this->modules->ShoppingCart->getSession();
 		$order->addStatus(Page::statusUnpublished);
 
@@ -575,6 +574,12 @@ class ShoppingCheckout extends WireData implements Module, ConfigurableModule
 
 		foreach ($items as $item) {
 			$product = $this->pages->get($item->product_id);
+
+			// If the product is repeater, we assume it is a product variation. Se let's prepend the product title before variation
+			if (strpos($product->template->name, "repeater_") === 0) {
+				$parentProduct = wire('pages')->get( (int) substr($product->parent->name, 9));
+				if ($parentProduct->id) $product->title = $parentProduct->title . ": " . $product->title;	
+			} 
 
 			$p = new Page();
 			$p->template = $this->templates->get('sc-order-item');
@@ -1054,6 +1059,17 @@ class ShoppingCheckout extends WireData implements Module, ConfigurableModule
 			$f->type = $this->modules->get("FieldtypeText");
 			$f->name = 'sc_paymentmethod';
 			$f->label = 'Payment Method used';
+			$f->flags = Field::flagSystem | Field::flagPermanent;
+			$f->save();
+		}
+		$fg->add($f);
+		$fg->save();
+
+		if (!$this->fields->get('sc_shippingoption')) {
+			$f = new Field();
+			$f->type = $this->modules->get("FieldtypeText");
+			$f->name = 'sc_shippingoption';
+			$f->label = 'Shipping Option used';
 			$f->flags = Field::flagSystem | Field::flagPermanent;
 			$f->save();
 		}
