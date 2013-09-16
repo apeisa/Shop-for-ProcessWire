@@ -20,7 +20,7 @@ table.items {
 	margin-bottom: 20px;
 }
 
-#paid_container {
+.container-1of2 {
 	width: 45%;
 	margin-right: 4%;
 	float: left;
@@ -29,9 +29,32 @@ table.items {
 	clear: both;
 }
 
-#processed_container {
+.container-2of2 {
 	width: 49%;
 	float: left;
+}
+
+.container-1of3 {
+	width: 30%;
+	margin-right: 3%;
+	float: left;
+	border-right: 1px dotted #ccc;
+	margin-bottom: 30px;
+	clear: both;
+}
+
+.container-2of3 {
+	width: 30%;
+	margin-right: 3%;
+	float: left;
+	border-right: 1px dotted #ccc;
+	margin-bottom: 30px;
+}
+
+.container-3of3 {
+	width: 30%;
+	float: left;
+	margin-bottom: 30px;
 }
 
 #status_container {
