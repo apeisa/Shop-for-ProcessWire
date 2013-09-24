@@ -32,8 +32,10 @@ class ShoppingCart extends WireData implements Module, ConfigurableModule
 	   }
 	}
 
-	public function init()
-	{
+	public function init() {
+	}
+	
+	public function ready() {
 		if ($this->input->post->sc_product_id) {
 			$product_id = (int) $this->input->post->sc_product_id;
 			$qty = (int) $this->input->post->sc_qty;
@@ -105,7 +107,7 @@ class ShoppingCart extends WireData implements Module, ConfigurableModule
 	 * @return true|false
 	 *
 	 */
-	public function addProductToCart(Page $product, $qty = 1)
+	public function ___addProductToCart(Page $product, $qty = 1)
 	{
 		$qty   = (int) $qty;
 
