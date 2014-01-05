@@ -7,7 +7,7 @@ class ShoppingCart extends WireData implements Module, ConfigurableModule
 	{
 		return array(
 			'title' => 'Shopping Cart',
-			'version' => 005,
+			'version' => 100,
 			'summary' => 'Simple shopping cart for PW',
 			'singular' => true,
 			'autoload' => true
