@@ -6,7 +6,7 @@ class ShoppingCheckout extends WireData implements Module, ConfigurableModule
 	{
 		return array(
 			'title' => 'Shopping Checkout',
-			'version' => 002,
+			'version' => 003,
 			'summary' => 'Handles checkout process, order saving etc. Main module for PW Shop',
 			'singular' => false,
 			'autoload' => false,
@@ -577,15 +577,16 @@ class ShoppingCheckout extends WireData implements Module, ConfigurableModule
 
 			// If the product is repeater, we assume it is a product variation. Se let's prepend the product title before variation
 			if (strpos($product->template->name, "repeater_") === 0) {
-				$parentProduct = wire('pages')->get( (int) substr($product->parent->name, 9));
-				if ($parentProduct->id) $product->title = $parentProduct->title . ": " . $product->title;	
-			} 
+				$parentProduct = $product->getForPage();
+				if ($parentProduct->id) $product->title = $parentProduct->title . ": " . $product->title;
+			}
 
 			$p = new Page();
 			$p->template = $this->templates->get('sc-order-item');
 			$p->parent = $order;
 			$p->title = $product->title;
-			$p->sc_price = $product->sc_price;
+			// $p->sc_price = $product->sc_price;
+			$p->sc_price = $this->modules->ShoppingCart->getProductPrice($item);
 			$p->sc_qty = $item->qty;
 			$p->sc_product = $product;
 			$p->save();
@@ -1122,7 +1123,7 @@ class ShoppingCheckout extends WireData implements Module, ConfigurableModule
 			$t->fieldgroup = $fg;
 			$t->urlSegments = 1;
 			$t->pageLabelField = 'title';
-			$t->flags = Template::flagSystem;
+			// $t->flags = Template::flagSystem;
 			$t = $t->save();
 		}
 
