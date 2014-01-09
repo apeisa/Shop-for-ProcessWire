@@ -93,7 +93,7 @@ class ShoppingStepsMarkup extends WireData implements Module, ConfigurableModule
 
 		$field = $modules->get("InputfieldPageListSelect");
 		$field->attr('name', 'cartPage');
-		$field->attr('value', $data['cartPage']);
+		$field->attr('value', isset($data['cartPage']) ? $data['cartPage'] : '');
 		$field->label = "Location of shopping cart page";
 		$field->description = "If you leave this empty, shopping cart page will not be visible on shopping steps breadcrumb.";
 		$fields->add($field);
