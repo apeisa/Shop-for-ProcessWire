@@ -7,7 +7,7 @@ class ShoppingCart extends WireData implements Module, ConfigurableModule
 	{
 		return array(
 			'title' => 'Shopping Cart',
-			'version' => 100,
+			'version' => 101,
 			'summary' => 'Simple shopping cart for PW',
 			'singular' => true,
 			'autoload' => true
@@ -34,7 +34,7 @@ class ShoppingCart extends WireData implements Module, ConfigurableModule
 
 	public function init() {
 	}
-	
+
 	public function ready() {
 		if ($this->input->post->sc_product_id) {
 			$product_id = (int) $this->input->post->sc_product_id;
@@ -200,7 +200,7 @@ class ShoppingCart extends WireData implements Module, ConfigurableModule
 			return $this->_("No items in cart");
 		}
 
-		$total_sum = $this->getTotalSumFromItems($items);
+		$total_sum = $this->getTotalSumFromItems($items, $shippingModule);
 
 		if (!$viewOnly) $out .= "<form method='post' action='./'>";
 		$out .= "<table>";
@@ -212,19 +212,20 @@ class ShoppingCart extends WireData implements Module, ConfigurableModule
 
 		foreach ($items as $item) {
 
+			$total_price = $this->getProductPriceTotal($item);
 
-			// get product price from actual product page
-			$product     = $this->pages->get($item->product_id);
-			$total_price = $item->qty * $product->sc_price;
+			$product = $this->pages->get((int) $item->product_id);
 
-			// If the product is repeater, we assume it is a product variation. Se let's prepend the product title before variation
+			// If the product is repeater, let's prepend the product title before variation
 			if (strpos($product->template->name, "repeater_") === 0) {
-				$parentProduct = wire('pages')->get( (int) substr($product->parent->name, 9));
-				if ($parentProduct->id) $product->title = $parentProduct->title . ": " . $product->title;	
-			} 
+				$parentProduct = $product->getForPage();
+				$title = $parentProduct->title . ": " . $product->title;
+			} else {
+				$title = $product->title;
+			}
 
 			$out .= "<tr>";
-			$out .= "<td>{$product->title}</td>";
+			$out .= "<td>{$title}</td>";
 			if (!$viewOnly)	{
 				$out .= "<td><input data-price='" . $product->sc_price . "' name='items[{$product->id}]' type='number' size='2' value='" . (int) $item->qty . "'/></td>";
 			} else {
@@ -238,9 +239,10 @@ class ShoppingCart extends WireData implements Module, ConfigurableModule
 
 		if ($shippingModule) {
 			$shippingCost = $shippingModule->calculateShippingCost();
-			$total_sum = $total_sum + $shippingCost;
 			$shippingCost = $this->renderPrice($shippingCost);
-			$out .= "<tr class='shippingRow'><td colspan='2'>". $this->_("Shipping costs") ."</td><td class='sc_number'>$shippingCost</td></tr>";
+			$out .= "<tr class='shippingRow'><td colspan='2'>". $this->_("Shipping costs") ."</td><td class='sc_number'>$shippingCost</td>";
+			if (!$viewOnly) $out .= "<td>&nbsp;</td>";
+			$out .= "</tr>";
 		}
 
 		$out .= "<tr class='final'><td colspan='2'>" . $this->_("Total:") . "</td><td id='total_sum'  class='sc_number'>". $this->renderPrice($total_sum) ."</td>";
@@ -343,8 +345,7 @@ class ShoppingCart extends WireData implements Module, ConfigurableModule
 			return $total_sum;
 
 		foreach ($items as $item) {
-			$product     = $this->pages->get($item->product_id);
-			$total_price = $item->qty * $product->sc_price;
+			$total_price = $this->getProductPriceTotal($item);
 			$total_sum   = $total_sum + $total_price;
 		}
 
@@ -354,6 +355,41 @@ class ShoppingCart extends WireData implements Module, ConfigurableModule
 
 		return $total_sum;
 	}
+
+	public function ___getProductPriceTotal($item)
+	{
+		$price = $this->getProductPrice($item);
+		$total_price = $item->qty * $price;
+		return $total_price;
+	}
+
+	public function ___getProductPrice($item)
+	{
+
+		$product = $this->pages->get($item->product_id);
+
+		// If the product is repeater, we assume it is a product variation. Se let's prepend the product title before variation
+		if (strpos($product->template->name, "repeater_") === 0) {
+
+			$parentProduct = $product->getForPage();
+			if ($parentProduct->id) {
+				// get product price from repeater page or if not set we get it from parent product
+				if($product->sc_price && $product->sc_price > 0){
+					$price = $product->sc_price;
+				} else if($parentProduct->sc_price && $parentProduct->sc_price > 0) {
+					$price = $parentProduct->sc_price;
+				}
+			}
+			$price;
+		} else {
+			// get product price from actual product page
+			$price = $product->sc_price;
+		}
+
+		return $price;
+
+	}
+
 
 	public function getCurrentCart()
 	{
