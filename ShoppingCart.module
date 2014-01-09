@@ -34,7 +34,7 @@ class ShoppingCart extends WireData implements Module, ConfigurableModule
 
 	public function init() {
 	}
-	
+
 	public function ready() {
 		if ($this->input->post->sc_product_id) {
 			$product_id = (int) $this->input->post->sc_product_id;
@@ -212,19 +212,31 @@ class ShoppingCart extends WireData implements Module, ConfigurableModule
 
 		foreach ($items as $item) {
 
-
-			// get product price from actual product page
-			$product     = $this->pages->get($item->product_id);
-			$total_price = $item->qty * $product->sc_price;
+			$product = $this->pages->get((int) $item->product_id);
 
 			// If the product is repeater, we assume it is a product variation. Se let's prepend the product title before variation
 			if (strpos($product->template->name, "repeater_") === 0) {
-				$parentProduct = wire('pages')->get( (int) substr($product->parent->name, 9));
-				if ($parentProduct->id) $product->title = $parentProduct->title . ": " . $product->title;	
-			} 
+
+				$parentProduct = $product->getForPage();
+
+				if ($parentProduct->id) {
+					$title = $parentProduct->title . ": " . $product->title;
+					// get product price from repeater page or if not set we get it from parent product
+					if($product->sc_price){
+						$total_price = $item->qty * $product->sc_price;
+					} else if($parentProduct->sc_price) {
+						$total_price = $item->qty * $parentProduct->sc_price;
+					}
+				}
+
+			} else {
+				// get product price from actual product page
+				$total_price 	= $item->qty * $product->sc_price;
+				$title 			= $product->title;
+			}
 
 			$out .= "<tr>";
-			$out .= "<td>{$product->title}</td>";
+			$out .= "<td>{$title}</td>";
 			if (!$viewOnly)	{
 				$out .= "<td><input data-price='" . $product->sc_price . "' name='items[{$product->id}]' type='number' size='2' value='" . (int) $item->qty . "'/></td>";
 			} else {
@@ -240,7 +252,9 @@ class ShoppingCart extends WireData implements Module, ConfigurableModule
 			$shippingCost = $shippingModule->calculateShippingCost();
 			$total_sum = $total_sum + $shippingCost;
 			$shippingCost = $this->renderPrice($shippingCost);
-			$out .= "<tr class='shippingRow'><td colspan='2'>". $this->_("Shipping costs") ."</td><td class='sc_number'>$shippingCost</td></tr>";
+			$out .= "<tr class='shippingRow'><td colspan='2'>". $this->_("Shipping costs") ."</td><td class='sc_number'>$shippingCost</td>";
+			if (!$viewOnly) $out .= "<td>&nbsp;</td>";
+			$out .= "</tr>";
 		}
 
 		$out .= "<tr class='final'><td colspan='2'>" . $this->_("Total:") . "</td><td id='total_sum'  class='sc_number'>". $this->renderPrice($total_sum) ."</td>";
