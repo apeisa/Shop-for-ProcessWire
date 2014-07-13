@@ -1,7 +1,7 @@
 1.  Install Shopping Cart
-2.  Add sc_price class to your product template (can be multiple templates)
+2.  Add sc_price field to your product template (can be added into multiple templates)
 3.  Edit few of your products and give them price
-4.  Add <?= $modules->get("ShoppingCart")->renderAddToCart(); ?> to your product template. If you don't like the markup it generates, you can put the wanted markup directly into template.
+4.  Add <?php echo $modules->get("ShoppingCart")->renderAddToCart(); ?> to your product template. If you don't like the markup it generates, you can put the wanted markup directly into template.
 5.  At this point you can add products to your cart. If you want to show somewhere how many products there is in your cart, do this in your template:
 $modules->get('ShoppingCart')->getNumberOfItems(false); // Total number of items
 or
