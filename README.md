@@ -17,3 +17,5 @@ This is starting to take shape. But there is no checkout at all? How to actually
 11.  You might want to show checkout steps (kind of a breadcrumb). That is possible with yet another module. Just put this to your sc-checkout template:
 <?= $modules->get("ShoppingStepsMarkup")->render(); ?>
 12.  When someone orders something, you probably want to see those in your admin. That is what Shopping Orders Management module is for. Go ahead and install that also (it has basic functionality, but very much wip).
+
+You find PayPal payment method module from here: https://github.com/apeisa/PaymentPaypal
